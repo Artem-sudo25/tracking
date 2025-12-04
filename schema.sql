@@ -191,6 +191,52 @@ CREATE TABLE orders (
   UNIQUE(client_id, external_order_id, platform)
 );
 
+-- LEADS TABLE (form submissions and lead generation)
+CREATE TABLE leads (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  
+  -- Lead Data
+  external_lead_id TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'form',
+  
+  -- Contact Info
+  email TEXT,
+  phone TEXT,
+  name TEXT,
+  company TEXT,
+  
+  -- Lead Details
+  form_type TEXT,
+  message TEXT,
+  lead_value NUMERIC(10,2),
+  currency TEXT DEFAULT 'CZK',
+  
+  -- Custom Fields (flexible for different form types)
+  custom_fields JSONB DEFAULT '{}',
+  
+  -- Attribution
+  session_id TEXT,
+  attribution_data JSONB,
+  match_type TEXT,
+  days_to_convert INT,
+  
+  -- Forwarding Status
+  sent_to_facebook BOOLEAN DEFAULT false,
+  sent_to_google BOOLEAN DEFAULT false,
+  facebook_event_id TEXT,
+  google_event_id TEXT,
+  
+  -- GDPR Compliance
+  consent_given BOOLEAN DEFAULT false,
+  ip_address TEXT,
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  UNIQUE(client_id, external_lead_id, source)
+);
+
+
 -- INDEXES
 CREATE INDEX idx_sessions_client ON sessions(client_id);
 CREATE INDEX idx_sessions_sid ON sessions(client_id, session_id);
@@ -205,15 +251,24 @@ CREATE INDEX idx_events_session ON events(session_id);
 CREATE INDEX idx_orders_client ON orders(client_id);
 CREATE INDEX idx_orders_created ON orders(created_at);
 CREATE INDEX idx_orders_email ON orders(customer_email) WHERE customer_email IS NOT NULL;
+CREATE INDEX idx_leads_client ON leads(client_id);
+CREATE INDEX idx_leads_created ON leads(created_at);
+CREATE INDEX idx_leads_email ON leads(email) WHERE email IS NOT NULL;
+CREATE INDEX idx_leads_session ON leads(session_id) WHERE session_id IS NOT NULL;
+
 
 -- ROW LEVEL SECURITY
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE anon_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+
 
 -- Policies: Service role has full access
 CREATE POLICY "Service role full access" ON sessions FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON events FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON orders FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON anon_events FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON leads FOR ALL USING (true);
+

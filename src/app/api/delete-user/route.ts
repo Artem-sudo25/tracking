@@ -40,6 +40,20 @@ export async function DELETE(request: NextRequest) {
             .eq('customer_email', normalizedEmail)
             .eq('client_id', CLIENT_ID)
 
+        // Anonymize leads
+        await supabase
+            .from('leads')
+            .update({
+                email: null,
+                phone: null,
+                name: null,
+                company: null,
+                message: null,
+                attribution_data: { deleted: true, deletion_date: new Date().toISOString() },
+            })
+            .eq('email', normalizedEmail)
+            .eq('client_id', CLIENT_ID)
+
         return NextResponse.json({
             success: true,
             message: `Data deleted for ${normalizedEmail}`
