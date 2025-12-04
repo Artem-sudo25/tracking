@@ -1,13 +1,8 @@
 // lib/forwarding/google.ts
 
-interface GoogleParams {
-    session: any
-    order: any
-    measurementId: string
-    apiSecret: string
-}
+import type { GoogleParams, ForwardingResult } from '@/types'
 
-export async function sendToGoogle(params: GoogleParams) {
+export async function sendToGoogle(params: GoogleParams): Promise<ForwardingResult> {
     const { session, order, measurementId, apiSecret } = params
 
     try {

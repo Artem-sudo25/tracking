@@ -1,20 +1,27 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { startOfMonth, subMonths, format } from 'date-fns'
+import { format } from 'date-fns'
+import type { DashboardData } from '@/types'
 
-export async function getDashboardData(clientId: string) {
+export async function getDashboardData(
+    clientId: string,
+    startDate?: string,
+    endDate?: string
+): Promise<DashboardData> {
     const supabase = await createClient()
 
-    // Date range (last 30 days for now)
-    const startDate = subMonths(new Date(), 1).toISOString()
+    // Use provided dates or default to last 30 days
+    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const end = endDate || new Date().toISOString()
 
     // 1. Total Revenue & Orders
     const { data: orders } = await supabase
         .from('orders')
         .select('*')
         .eq('client_id', clientId)
-        .gte('created_at', startDate)
+        .gte('created_at', start)
+        .lte('created_at', end)
         .order('created_at', { ascending: false })
 
     const totalRevenue = orders?.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0

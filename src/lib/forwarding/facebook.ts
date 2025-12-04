@@ -1,15 +1,8 @@
 // lib/forwarding/facebook.ts
 
-interface FacebookParams {
-    session: any
-    order: any
-    eventId: string
-    pixelId: string
-    accessToken: string
-    testEventCode?: string
-}
+import type { FacebookParams, ForwardingResult } from '@/types'
 
-export async function sendToFacebook(params: FacebookParams) {
+export async function sendToFacebook(params: FacebookParams): Promise<ForwardingResult> {
     const { session, order, eventId, pixelId, accessToken, testEventCode } = params
 
     try {
