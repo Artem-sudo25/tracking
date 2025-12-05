@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { DateRange } from '@/types'
 import type { DashboardData } from '@/types'
-import { getDashboardData, getLeadsDashboardData } from '@/app/actions/dashboard'
+import { getDashboardData, getLeadsDashboardData, getPipelineMetrics } from '@/app/actions/dashboard'
 import { getVisitorAnalytics } from '@/app/actions/visitor-analytics'
 import { DateRangePicker } from './DateRangePicker'
 import { Button } from '@/components/ui/button'
