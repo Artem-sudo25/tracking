@@ -335,3 +335,98 @@ export async function getLeadsDashboardData(
         chartData: dailyLeads,
     }
 }
+
+export async function updateLeadStatus(
+    leadId: string,
+    status: string,
+    dealValue?: number
+) {
+    const supabase = await createClient()
+
+    const updates: any = {
+        status,
+        status_updated_at: new Date().toISOString()
+    }
+
+    if (dealValue !== undefined) {
+        updates.deal_value = dealValue
+    }
+
+    const { error } = await supabase
+        .from('leads')
+        .update(updates)
+        .eq('id', leadId)
+
+    if (error) {
+        console.error('Error updating lead status:', error)
+        return { success: false, error: error.message }
+    }
+
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/leads')
+    return { success: true }
+}
+
+export async function getPipelineMetrics(
+    clientId: string,
+    startDate?: string,
+    endDate?: string
+) {
+    const supabase = await createClient()
+
+    // Default to last 30 days if no dates provided
+    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const end = endDate || new Date().toISOString()
+
+    const { data: leads, error } = await supabase
+        .from('leads')
+        .select('status, source')
+        .eq('client_id', clientId)
+        .gte('created_at', start)
+        .lte('created_at', end)
+
+    if (error) {
+        console.error('Error fetching pipeline metrics:', error)
+        return { total: 0, statusCounts: {}, winRate: 0, bySource: [] }
+    }
+
+    const total = leads.length
+    const statusCounts = leads.reduce((acc, lead) => {
+        const s = lead.status || 'new'
+        acc[s] = (acc[s] || 0) + 1
+        return acc
+    }, {} as Record<string, number>)
+
+    // Win Rate (Won / Total)
+    const won = statusCounts['won'] || 0
+    const winRate = total > 0 ? (won / total) * 100 : 0
+
+    // By Source logic
+    const sourceStats = leads.reduce((acc, lead) => {
+        const source = lead.source || 'Direct'
+        if (!acc[source]) {
+            acc[source] = { total: 0, won: 0 }
+        }
+        acc[source].total++
+        if (lead.status === 'won') {
+            acc[source].won++
+        }
+        return acc
+    }, {} as Record<string, { total: number, won: number }>)
+
+    const bySource = Object.entries(sourceStats)
+        .map(([source, stats]) => ({
+            source,
+            total: stats.total,
+            won: stats.won,
+            winRate: stats.total > 0 ? (stats.won / stats.total) * 100 : 0
+        }))
+        .sort((a, b) => b.total - a.total)
+
+    return {
+        total,
+        statusCounts,
+        winRate,
+        bySource
+    }
+}
