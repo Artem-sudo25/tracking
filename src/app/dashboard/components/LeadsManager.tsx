@@ -9,13 +9,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { formatDistanceToNow } from 'date-fns'
-import { Search, Filter } from 'lucide-react'
+import Link from 'next/link'
+import { Search, Filter, ArrowLeft } from 'lucide-react'
 import { updateLeadStatus } from '@/app/actions/dashboard'
 import { PipelineMetrics } from './PipelineMetrics'
 
 interface Lead {
     id: string
-    lead_id?: string // Handle inconsistent naming in types if any
+    lead_id?: string
     name?: string
     email?: string
     phone?: string
@@ -23,6 +24,7 @@ interface Lead {
     status?: string
     created_at: string
     deal_value?: number
+    attribution_data?: any
 }
 
 interface LeadsManagerProps {
@@ -31,68 +33,20 @@ interface LeadsManagerProps {
 }
 
 export function LeadsManager({ initialLeads, metrics }: LeadsManagerProps) {
-    const [leads, setLeads] = useState(initialLeads)
-    const [searchQuery, setSearchQuery] = useState('')
-    const [statusFilter, setStatusFilter] = useState('all')
-    const [sourceFilter, setSourceFilter] = useState('all') // Simplified for now
-
-    // Modal state for 'Won' status
-    const [isWonModalOpen, setIsWonModalOpen] = useState(false)
-    const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
-    const [dealValue, setDealValue] = useState('')
-    const [isUpdating, setIsUpdating] = useState(false)
-
-    // Derived filters
-    const filteredLeads = leads.filter(lead => {
-        const matchesSearch = (lead.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-            (lead.email?.toLowerCase() || '').includes(searchQuery.toLowerCase())
-        const matchesStatus = statusFilter === 'all' || lead.status === statusFilter
-        return matchesSearch && matchesStatus
-    })
-
-    const handleStatusChange = async (leadId: string, newStatus: string) => {
-        if (newStatus === 'won') {
-            setSelectedLeadId(leadId)
-            setDealValue('')
-            setIsWonModalOpen(true)
-            return
-        }
-
-        // Optimistic update
-        setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus } : l))
-
-        await updateLeadStatus(leadId, newStatus)
-    }
-
-    const confirmWonStatus = async () => {
-        if (!selectedLeadId) return
-
-        setIsUpdating(true)
-        const value = parseFloat(dealValue) || 0
-
-        // Optimistic update
-        setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, status: 'won', deal_value: value } : l))
-
-        await updateLeadStatus(selectedLeadId, 'won', value)
-
-        setIsUpdating(false)
-        setIsWonModalOpen(false)
-        setSelectedLeadId(null)
-    }
-
-    const getStatusColor = (status?: string) => {
-        switch (status) {
-            case 'new': return 'bg-orange-100 text-orange-800'
-            case 'contacted': return 'bg-blue-100 text-blue-800'
-            case 'qualified': return 'bg-purple-100 text-purple-800'
-            case 'won': return 'bg-green-100 text-green-800'
-            case 'lost': return 'bg-gray-100 text-gray-800'
-            default: return 'bg-gray-100 text-gray-800'
-        }
-    }
+    // ... existing state ...
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
+            <div className="flex items-center space-x-4">
+                <Link href="/dashboard">
+                    <Button variant="ghost" size="sm" className="pl-0 gap-2">
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to Dashboard
+                    </Button>
+                </Link>
+                <h1 className="text-2xl font-bold tracking-tight">Lead Pipeline</h1>
+            </div>
+
             <PipelineMetrics data={metrics} />
 
             <Card>
