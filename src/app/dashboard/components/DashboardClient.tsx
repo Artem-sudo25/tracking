@@ -45,9 +45,10 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
     return { from: thirtyDaysAgo, to: today }
   })
 
-  const [purchasesData, setPurchasesData] = useState<DashboardData>(initialData)
   const [leadsData, setLeadsData] = useState<any>(null)
   const [visitorData, setVisitorData] = useState<any>(null)
+  const [pipelineMetrics, setPipelineMetrics] = useState<any>(null)
+  const [attributionModel, setAttributionModel] = useState('last_touch')
   const [isLoading, setIsLoading] = useState(false)
 
   // Save view preference to localStorage
@@ -78,7 +79,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
       let nextIndex = 0;
 
       if (showPurchases) {
-        promises.push(getDashboardData(clientId, start, end, attributionModel))
+        promises.push(getDashboardData(clientId, start, end))
         resultsOrder.purchases = nextIndex++;
       }
 
