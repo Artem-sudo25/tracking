@@ -135,6 +135,40 @@ export async function POST(request: NextRequest) {
                 .eq('client_id', CLIENT_ID)
         }
 
+        // === RECORD TOUCHPOINT (JOURNEY) ===
+        // If this is a new session OR has new marketing data, we record a touchpoint.
+        // We want to capture the full journey: 1st touch, 2nd touch, etc.
+        if (hasTouchData) {
+            // Get current touchpoint count for this visitor
+            const { count } = await supabase
+                .from('touchpoints')
+                .select('*', { count: 'exact', head: true })
+                .eq('client_id', CLIENT_ID)
+                .eq('session_id', sessionId)
+
+            const nextNumber = (count || 0) + 1
+
+            // Insert new touchpoint
+            await supabase.from('touchpoints').insert({
+                client_id: CLIENT_ID,
+                session_id: sessionId,
+                source: touch.source,
+                medium: touch.medium,
+                campaign: touch.campaign,
+                term: touch.term,
+                content: touch.content,
+                referrer: touch.referrer,
+                landing_page: touch.landing,
+                page_path: body.landing, // initial landing of this touch
+                gclid: body.gclid,
+                fbclid: body.fbclid,
+                ttclid: body.ttclid,
+                msclkid: body.msclkid,
+                touchpoint_number: nextNumber,
+                timestamp: touch.timestamp
+            })
+        }
+
         // Return session_id so client can store it
         const response = NextResponse.json({ session_id: sessionId })
 
