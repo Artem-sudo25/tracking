@@ -12,6 +12,7 @@ interface PipelineMetricsProps {
             source: string
             total: number
             won: number
+            value: number
             winRate: number
         }>
     }
@@ -70,10 +71,10 @@ export function PipelineMetrics({ data }: PipelineMetricsProps) {
                 </CardContent>
             </Card>
 
-            {/* Win Rate by Source */}
+            {/* Win Rate & Value by Source */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-sm font-medium">Win Rate by Source</CardTitle>
+                    <CardTitle className="text-sm font-medium">Performance by Source</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-4">
@@ -86,13 +87,24 @@ export function PipelineMetrics({ data }: PipelineMetricsProps) {
                                             ({source.won}/{source.total} won)
                                         </span>
                                     </div>
-                                    <span className={source.winRate > 20 ? 'text-green-600 font-medium' : 'text-muted-foreground'}>
-                                        {source.winRate.toFixed(1)}%
-                                    </span>
+                                    <div className="text-right">
+                                        <span className="block font-medium text-green-700">
+                                            {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(source.value)}
+                                        </span>
+                                        <span className={`text-xs ${source.winRate > 20 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                                            {source.winRate.toFixed(1)}% win rate
+                                        </span>
+                                    </div>
                                 </div>
                                 <Progress value={source.winRate} className="h-2" />
                             </div>
                         ))}
+                        {bySource.length > 0 && (
+                            <div className="pt-4 border-t text-sm text-muted-foreground">
+                                <span className="font-medium text-foreground">Key Insight: </span>
+                                {bySource.map(s => `${s.source} leads close at ${s.winRate.toFixed(0)}%`).join(', ')}.
+                            </div>
+                        )}
                         {bySource.length === 0 && (
                             <p className="text-sm text-muted-foreground text-center py-4">
                                 No data available

@@ -6,6 +6,12 @@ import type { DashboardData } from '@/types'
 import { getDashboardData, getLeadsDashboardData } from '@/app/actions/dashboard'
 import { getVisitorAnalytics } from '@/app/actions/visitor-analytics'
 import { DateRangePicker } from './DateRangePicker'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { CalendarDateRange } from 'react-day-picker'
+import { Presentation } from 'lucide-react' // Use Presentation as icon for Pipeline
+import Link from 'next/link'
 import { ViewToggle } from './ViewToggle'
 import { StatsCards } from './StatsCards'
 import { LeadsStatsCards } from './LeadsStatsCards'
@@ -99,14 +105,28 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex items-center justify-between space-y-2">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-          <p className="text-muted-foreground">Overview of your attribution performance.</p>
+          <p className="text-muted-foreground">
+            Overview of your attribution performance.
+          </p>
         </div>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <ViewToggle currentView={currentView} onChange={setCurrentView} />
-          <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+        <div className="flex items-center space-x-2">
+          <Link href="/dashboard/leads">
+            <Button variant="outline">
+              <Presentation className="mr-2 h-4 w-4" />
+              Pipeline
+            </Button>
+          </Link>
+          <DateRangePicker
+            date={dateRange}
+            onDateChange={(range) => {
+              if (range?.from && range?.to) {
+                setDateRange(range)
+              }
+            }}
+          />
         </div>
       </div>
 

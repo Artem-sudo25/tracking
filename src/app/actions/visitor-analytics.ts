@@ -52,17 +52,25 @@ export async function getVisitorAnalytics(
         let lastViewTime = 0
         let isBounce = true // Assume bounce until proven otherwise (views > 1)
 
-        // Track sources for this visitor (use first non-direct if available, or just first)
-        let primarySource = visitorSessions[0].ft_source || 'Direct'
-        let primaryMedium = visitorSessions[0].ft_medium || '(none)'
+        // Track sources for this visitor
+        // Strategy: First Non-Direct Click (Standard Acquisition)
+        // If all are direct, then Direct.
+        // We look for the first session that has a valid source/medium.
+        let primarySource = 'Direct'
+        let primaryMedium = '(none)'
 
-        visitorSessions.forEach((s: any) => {
-            // Check if this view is unique enough (e.g. > 5 seconds after last valid view)
-            if (s.parsedDate - lastViewTime > 5000) {
-                validPageViews++
-                lastViewTime = s.parsedDate
-            }
-        })
+        const nonDirectSession = visitorSessions.find((s: any) =>
+            s.ft_source && s.ft_source.toLowerCase() !== 'direct'
+        )
+
+        if (nonDirectSession) {
+            primarySource = nonDirectSession.ft_source
+            primaryMedium = nonDirectSession.ft_medium || '(none)'
+        } else if (visitorSessions[0].ft_source) {
+            // Fallback to first session even if it is direct (explicitly set)
+            primarySource = visitorSessions[0].ft_source
+            primaryMedium = visitorSessions[0].ft_medium || '(none)'
+        }
 
         // Accumulate total metrics
         totalDeduplicatedPageViews += validPageViews

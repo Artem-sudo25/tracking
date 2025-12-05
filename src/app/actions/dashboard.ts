@@ -381,7 +381,7 @@ export async function getPipelineMetrics(
 
     const { data: leads, error } = await supabase
         .from('leads')
-        .select('status, source')
+        .select('status, source, deal_value, attribution_data')
         .eq('client_id', clientId)
         .gte('created_at', start)
         .lte('created_at', end)
@@ -404,25 +404,40 @@ export async function getPipelineMetrics(
 
     // By Source logic
     const sourceStats = leads.reduce((acc, lead) => {
-        const source = lead.source || 'Direct'
+        // Use attribution data if available, otherwise fallback to source column
+        let source = lead.source || 'Direct'
+
+        // Try to get marketing source from attribution data
+        if (lead.attribution_data?.first_touch?.source) {
+            source = lead.attribution_data.first_touch.source
+            if (lead.attribution_data.first_touch.medium && lead.attribution_data.first_touch.medium !== '(none)') {
+                source = `${source} / ${lead.attribution_data.first_touch.medium}`
+            }
+        } else if (source === 'website_contact_form') {
+            // If no attribution and source is generic form, try to be smarter or just generic
+            source = 'Direct / (none)'
+        }
+
         if (!acc[source]) {
-            acc[source] = { total: 0, won: 0 }
+            acc[source] = { total: 0, won: 0, value: 0 }
         }
         acc[source].total++
         if (lead.status === 'won') {
             acc[source].won++
+            acc[source].value += Number(lead.deal_value || 0)
         }
         return acc
-    }, {} as Record<string, { total: number, won: number }>)
+    }, {} as Record<string, { total: number, won: number, value: number }>)
 
     const bySource = Object.entries(sourceStats)
         .map(([source, stats]) => ({
             source,
             total: stats.total,
             won: stats.won,
+            value: stats.value,
             winRate: stats.total > 0 ? (stats.won / stats.total) * 100 : 0
         }))
-        .sort((a, b) => b.total - a.total)
+        .sort((a, b) => b.value - a.value) // Sort by value first, or total? Let's do Value for importance.
 
     return {
         total,
