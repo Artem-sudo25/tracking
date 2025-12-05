@@ -9,7 +9,6 @@ import { DateRangePicker } from './DateRangePicker'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { CalendarDateRange } from 'react-day-picker'
 import { Presentation } from 'lucide-react' // Use Presentation as icon for Pipeline
 import Link from 'next/link'
 import { ViewToggle } from './ViewToggle'
