@@ -86,3 +86,112 @@ export async function getDashboardData(
         chartData
     }
 }
+
+export async function getLeadsDashboardData(
+    clientId: string,
+    startDate?: string,
+    endDate?: string
+): Promise<any> {
+    const supabase = await createClient()
+
+    // Use provided dates or default to last 30 days
+    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const end = endDate || new Date().toISOString()
+
+    // 1. Fetch all leads
+    const { data: leads } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('client_id', clientId)
+        .gte('created_at', start)
+        .lte('created_at', end)
+        .order('created_at', { ascending: false })
+
+    const totalLeads = leads?.length || 0
+
+    // 2. Fetch purchases to calculate conversion rate
+    const { data: purchases } = await supabase
+        .from('purchases')
+        .select('lead_id')
+        .eq('client_id', clientId)
+        .gte('created_at', start)
+        .lte('created_at', end)
+        .not('lead_id', 'is', null)
+
+    const convertedLeads = new Set(purchases?.map(p => p.lead_id) || [])
+    const conversionRate = totalLeads > 0 ? convertedLeads.size / totalLeads : 0
+
+    // 3. Average lead value
+    const avgLeadValue = leads?.reduce((sum, l) => sum + (l.lead_value || 0), 0) / (totalLeads || 1)
+
+    // 4. Leads by form type
+    const formTypeMap = new Map()
+    leads?.forEach(l => {
+        const formType = l.form_type || 'unknown'
+        if (!formTypeMap.has(formType)) {
+            formTypeMap.set(formType, { formType, count: 0, value: 0 })
+        }
+        const entry = formTypeMap.get(formType)
+        entry.count += 1
+        entry.value += (l.lead_value || 0)
+    })
+
+    const leadsByFormType = Array.from(formTypeMap.values())
+        .sort((a, b) => b.count - a.count)
+
+    // 5. Leads by source (first touch)
+    const sourceMap = new Map()
+    leads?.forEach(l => {
+        if (l.attribution_data?.first_touch) {
+            const source = l.attribution_data.first_touch.source || 'Direct'
+            const medium = l.attribution_data.first_touch.medium || '(none)'
+            const key = `${source}/${medium}`
+
+            if (!sourceMap.has(key)) {
+                sourceMap.set(key, { source, medium, count: 0, value: 0 })
+            }
+
+            const entry = sourceMap.get(key)
+            entry.count += 1
+            entry.value += (l.lead_value || 0)
+        }
+    })
+
+    const leadsBySource = Array.from(sourceMap.values())
+        .sort((a, b) => b.count - a.count)
+
+    // 6. Leads over time (daily)
+    const dailyMap = new Map()
+    leads?.forEach(l => {
+        const date = format(new Date(l.created_at), 'MMM dd')
+        if (!dailyMap.has(date)) {
+            dailyMap.set(date, 0)
+        }
+        dailyMap.set(date, dailyMap.get(date) + 1)
+    })
+
+    const chartData = Array.from(dailyMap.entries())
+        .map(([date, count]) => ({ date, count }))
+
+    // 7. Top lead source
+    const topSource = leadsBySource[0] || { source: 'N/A', medium: 'N/A', count: 0 }
+
+    // 8. Leads this week
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const leadsThisWeek = leads?.filter(l => l.created_at >= weekAgo).length || 0
+
+    return {
+        stats: {
+            totalLeads,
+            conversionRate,
+            avgLeadValue,
+            topSource: `${topSource.source}/${topSource.medium}`,
+            leadsThisWeek,
+            newLeadsCount: leads?.filter(l => l.status === 'new' || !l.status).length || 0
+        },
+        leadsByFormType,
+        leadsBySource,
+        recentLeads: leads?.slice(0, 10) || [],
+        chartData
+    }
+}
