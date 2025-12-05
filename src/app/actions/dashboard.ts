@@ -175,22 +175,27 @@ export async function getLeadsDashboardData(
     const leadsByFormType = Array.from(formTypeMap.values())
         .sort((a, b) => b.count - a.count)
 
-    // 5. Leads by source (first touch)
+    // 5. Leads by source (first touch) - include ALL leads
     const sourceMap = new Map()
     leads?.forEach(l => {
+        // Handle leads with and without attribution data
+        let source = 'Direct'
+        let medium = '(none)'
+
         if (l.attribution_data?.first_touch) {
-            const source = l.attribution_data.first_touch.source || 'Direct'
-            const medium = l.attribution_data.first_touch.medium || '(none)'
-            const key = `${source}/${medium}`
-
-            if (!sourceMap.has(key)) {
-                sourceMap.set(key, { source, medium, count: 0, value: 0 })
-            }
-
-            const entry = sourceMap.get(key)
-            entry.count += 1
-            entry.value += (l.lead_value || 0)
+            source = l.attribution_data.first_touch.source || 'Direct'
+            medium = l.attribution_data.first_touch.medium || '(none)'
         }
+
+        const key = `${source}/${medium}`
+
+        if (!sourceMap.has(key)) {
+            sourceMap.set(key, { source, medium, count: 0, value: 0 })
+        }
+
+        const entry = sourceMap.get(key)
+        entry.count += 1
+        entry.value += (l.lead_value || 0)
     })
 
     const leadsBySource = Array.from(sourceMap.values())
