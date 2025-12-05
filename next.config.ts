@@ -1,4 +1,3 @@
-```typescript
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -11,9 +10,9 @@ const nextConfig: NextConfig = {
           {
             key: "Access-Control-Allow-Origin",
             // Must specify exact origin when using credentials, not wildcard
-            value: process.env.NODE_ENV === 'production' 
-                ? 'https://www.propradlo.cz'
-                : 'http://localhost:3000',
+            value: process.env.NODE_ENV === 'production'
+              ? 'https://www.propradlo.cz'
+              : 'http://localhost:3000',
           },
           {
             key: "Access-Control-Allow-Methods",
@@ -34,4 +33,3 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-```
