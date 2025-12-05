@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
+import { revalidatePath } from 'next/cache'
 import { differenceInDays, differenceInHours, format } from 'date-fns'
 import type { DashboardData } from '@/types'
 
