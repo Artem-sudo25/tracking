@@ -20,37 +20,39 @@ export async function getVisitorAnalytics(
         .gte('created_at', start)
         .lte('created_at', end)
 
-    // Count UNIQUE session_ids (like Google Analytics unique visitors)
-    const uniqueSessionIds = new Set(sessions?.map(s => s.session_id) || [])
-    const totalVisitors = uniqueSessionIds.size
+    // Count UNIQUE visitors using ip_hash
+    const uniqueVisitorIds = new Set(sessions?.map(s => s.ip_hash || s.session_id) || [])
+    const totalVisitors = uniqueVisitorIds.size
 
-    // For page views and bounce rate, we need to aggregate by session_id
-    const sessionMap = new Map()
+    // For page views and bounce rate, we need to aggregate by unique visitor (ip_hash)
+    const visitorMap = new Map()
     sessions?.forEach(s => {
-        const sid = s.session_id
-        if (!sessionMap.has(sid)) {
-            sessionMap.set(sid, {
-                pageViews: s.page_views || 1,
+        const vid = s.ip_hash || s.session_id
+        if (!visitorMap.has(vid)) {
+            visitorMap.set(vid, {
+                pageViews: s.page_views || 1, // Start with page views from this session
                 source: s.ft_source || 'Direct',
                 medium: s.ft_medium || '(none)',
+                sessions: 1
             })
         } else {
-            // If multiple records for same session, take the max page_views
-            const existing = sessionMap.get(sid)
-            existing.pageViews = Math.max(existing.pageViews, s.page_views || 1)
+            // Aggregate page views for same visitor across multiple sessions
+            const existing = visitorMap.get(vid)
+            existing.pageViews += (s.page_views || 1)
+            existing.sessions += 1
         }
     })
 
-    const uniqueSessions = Array.from(sessionMap.values())
+    const uniqueVisitors = Array.from(visitorMap.values())
 
-    // Calculate total page views from unique sessions
-    const totalPageViews = uniqueSessions.reduce((sum, s) => sum + s.pageViews, 0)
+    // Calculate total page views
+    const totalPageViews = sessions?.reduce((sum, s) => sum + (s.page_views || 1), 0) || 0
 
-    // Calculate bounce rate (sessions with only 1 page view)
-    const bounces = uniqueSessions.filter(s => s.pageViews === 1).length
+    // Calculate bounce rate (visitors with only 1 page view total)
+    const bounces = uniqueVisitors.filter(v => v.pageViews === 1).length
     const bounceRate = totalVisitors > 0 ? (bounces / totalVisitors) * 100 : 0
 
-    // Pages per session
+    // Pages per session (actually pages per visitor now, more accurate)
     const pagesPerSession = totalVisitors > 0 ? totalPageViews / totalVisitors : 0
 
     // Get leads count
@@ -75,15 +77,15 @@ export async function getVisitorAnalytics(
     const leadToCustomerRate = (leadsCount || 0) > 0 ? ((customersCount || 0) / (leadsCount || 1)) * 100 : 0
     const visitorToCustomerRate = totalVisitors > 0 ? ((customersCount || 0) / totalVisitors) * 100 : 0
 
-    // Visitors by source (using unique sessions)
+    // Visitors by source (using unique visitors)
     const sourceMap = new Map()
-    uniqueSessions.forEach(s => {
-        const key = `${s.source}/${s.medium}`
+    uniqueVisitors.forEach(v => {
+        const key = `${v.source}/${v.medium}`
 
         if (!sourceMap.has(key)) {
             sourceMap.set(key, {
-                source: s.source,
-                medium: s.medium,
+                source: v.source,
+                medium: v.medium,
                 visitors: 0,
                 bounces: 0,
             })
@@ -91,7 +93,7 @@ export async function getVisitorAnalytics(
 
         const entry = sourceMap.get(key)
         entry.visitors += 1
-        if (s.pageViews === 1) {
+        if (v.pageViews === 1) {
             entry.bounces += 1
         }
     })
@@ -106,7 +108,7 @@ export async function getVisitorAnalytics(
     return {
         totalVisitors,
         totalPageViews,
-        bounceRate,
+        bounceRate: Math.min(bounceRate, 100), // Cap at 100% just in case
         pagesPerSession,
         leadsCount: leadsCount || 0,
         customersCount: customersCount || 0,

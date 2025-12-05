@@ -190,12 +190,12 @@ export async function getLeadsDashboardData(
     // Get ad spend for the period
     const { data: adSpendData } = await supabase
         .from('ad_spend')
-        .select('amount')
+        .select('spend')
         .eq('client_id', clientId)
         .gte('date', start)
         .lte('date', end)
 
-    const totalSpend = adSpendData?.reduce((sum, s) => sum + (s.amount || 0), 0) || 0
+    const totalSpend = adSpendData?.reduce((sum, s) => sum + (s.spend || 0), 0) || 0
     const costPerLead = totalLeads > 0 ? totalSpend / totalLeads : 0
 
     // 4. Leads by form type
