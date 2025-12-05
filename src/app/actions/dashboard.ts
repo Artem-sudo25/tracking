@@ -284,8 +284,32 @@ export async function getLeadsDashboardData(
     const topSource = leadsWithROI[0] || { source: 'N/A', medium: 'N/A', count: 0 }
     const topSourceText = `${topSource.source}/${topSource.medium}`
 
-    // 9. New leads count
-    const newLeadsCount = leads?.filter(l => l.status === 'new' || !l.status).length || 0
+    // 9. New leads count - leads created after last view
+    // Get last view timestamp for this user
+    const { data: { user } } = await supabase.auth.getUser()
+    let newLeadsCount = 0
+
+    if (user) {
+        const { data: activity } = await supabase
+            .from('user_dashboard_activity')
+            .select('last_leads_view')
+            .eq('user_id', user.id)
+            .eq('client_id', clientId)
+            .single()
+
+        const lastView = activity?.last_leads_view
+
+        if (lastView) {
+            // Count leads created after last view
+            newLeadsCount = leads?.filter(l => new Date(l.created_at) > new Date(lastView)).length || 0
+        } else {
+            // If never viewed, all leads are new
+            newLeadsCount = leads?.length || 0
+        }
+    } else {
+        // Fallback to status-based count if not authenticated
+        newLeadsCount = leads?.filter(l => l.status === 'new' || !l.status).length || 0
+    }
 
     return {
         stats: {

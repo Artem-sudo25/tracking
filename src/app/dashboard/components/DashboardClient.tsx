@@ -99,6 +99,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
               <h3 className="text-2xl font-bold">Leads</h3>
             )}
             <LeadsStatsCards
+              clientId={clientId}
               totalLeads={leadsData.stats.totalLeads}
               conversionRate={leadsData.stats.conversionRate}
               avgLeadValue={leadsData.stats.avgLeadValue}

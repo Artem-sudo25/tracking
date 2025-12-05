@@ -1,7 +1,14 @@
+'use client'
+
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users, TrendingUp, DollarSign, Target, Calendar, Bell } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Users, TrendingUp, DollarSign, Calendar, Bell, Check } from 'lucide-react'
+import { markLeadsAsSeen } from '@/app/actions/user-activity'
+import { useRouter } from 'next/navigation'
 
 interface LeadsStatsCardsProps {
+    clientId: string
     totalLeads: number
     conversionRate: number
     avgLeadValue: number
@@ -12,6 +19,7 @@ interface LeadsStatsCardsProps {
 }
 
 export function LeadsStatsCards({
+    clientId,
     totalLeads,
     conversionRate,
     avgLeadValue,
@@ -20,6 +28,23 @@ export function LeadsStatsCards({
     timeLabel,
     newLeadsCount
 }: LeadsStatsCardsProps) {
+    const router = useRouter()
+    const [isMarking, setIsMarking] = useState(false)
+
+    const handleMarkAsSeen = async () => {
+        setIsMarking(true)
+        const result = await markLeadsAsSeen(clientId)
+
+        if (result.success) {
+            // Refresh the page to update the new leads count
+            router.refresh()
+        } else {
+            console.error('Failed to mark leads as seen:', result.error)
+        }
+
+        setIsMarking(false)
+    }
+
     return (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card>
@@ -84,9 +109,27 @@ export function LeadsStatsCards({
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-orange-900">{newLeadsCount}</div>
-                        <p className="text-xs text-orange-700">
-                            Require attention
-                        </p>
+                        <div className="flex items-center justify-between mt-2">
+                            <p className="text-xs text-orange-700">
+                                Require attention
+                            </p>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleMarkAsSeen}
+                                disabled={isMarking}
+                                className="h-7 text-xs text-orange-700 hover:text-orange-900 hover:bg-orange-100"
+                            >
+                                {isMarking ? (
+                                    <>Marking...</>
+                                ) : (
+                                    <>
+                                        <Check className="h-3 w-3 mr-1" />
+                                        Mark as Seen
+                                    </>
+                                )}
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
             )}
