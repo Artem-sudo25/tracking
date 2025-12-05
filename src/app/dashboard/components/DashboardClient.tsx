@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { DateRange } from '@/types'
 import type { DashboardData } from '@/types'
 import { getDashboardData, getLeadsDashboardData } from '@/app/actions/dashboard'
+import { getVisitorAnalytics } from '@/app/actions/visitor-analytics'
 import { DateRangePicker } from './DateRangePicker'
 import { ViewToggle } from './ViewToggle'
 import { StatsCards } from './StatsCards'
@@ -13,6 +14,7 @@ import { RevenueBySource } from './RevenueBySource'
 import { RevenueChart } from './RevenueChart'
 import { RecentOrders } from './RecentOrders'
 import { RecentLeads } from './RecentLeads'
+import { VisitorAnalytics } from './VisitorAnalytics'
 
 interface DashboardClientProps {
   clientId: string
@@ -40,6 +42,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
 
   const [purchasesData, setPurchasesData] = useState<DashboardData>(initialData)
   const [leadsData, setLeadsData] = useState<any>(null)
+  const [visitorData, setVisitorData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   // Save view preference to localStorage
@@ -47,24 +50,43 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
     localStorage.setItem('dashboard_view', currentView)
   }, [currentView])
 
-  // Fetch data when date range changes
+  const showLeads = currentView === 'leads' || currentView === 'combined'
+  const showPurchases = currentView === 'purchases' || currentView === 'combined'
+
+  // Fetch data when date range or view changes
   useEffect(() => {
     async function fetchData() {
       if (!dateRange.from || !dateRange.to) return
 
       setIsLoading(true)
+      const start = dateRange.from.toISOString()
+      const end = dateRange.to.toISOString()
+
+      // Fetch data in parallel based on current view
+      const promises = []
+
+      if (showPurchases) {
+        promises.push(getDashboardData(clientId, start, end))
+      }
+
+      if (showLeads) {
+        promises.push(getLeadsDashboardData(clientId, start, end))
+        promises.push(getVisitorAnalytics(clientId, start, end))
+      }
+
       try {
-        const startDate = dateRange.from.toISOString()
-        const endDate = dateRange.to.toISOString()
+        const results = await Promise.all(promises)
 
-        // Fetch both purchases and leads data in parallel
-        const [newPurchasesData, newLeadsData] = await Promise.all([
-          getDashboardData(clientId, startDate, endDate),
-          getLeadsDashboardData(clientId, startDate, endDate)
-        ])
-
-        setPurchasesData(newPurchasesData)
-        setLeadsData(newLeadsData)
+        if (showPurchases && showLeads) {
+          setPurchasesData(results[0])
+          setLeadsData(results[1])
+          setVisitorData(results[2])
+        } else if (showPurchases) {
+          setPurchasesData(results[0])
+        } else if (showLeads) {
+          setLeadsData(results[0])
+          setVisitorData(results[1])
+        }
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
       } finally {
@@ -73,10 +95,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
     }
 
     fetchData()
-  }, [clientId, dateRange])
-
-  const showLeads = currentView === 'leads' || currentView === 'combined'
-  const showPurchases = currentView === 'purchases' || currentView === 'combined'
+  }, [clientId, dateRange, currentView, showLeads, showPurchases])
 
   return (
     <div className="space-y-8">
@@ -112,6 +131,13 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
             <div className="grid gap-4 md:grid-cols-1">
               <RecentLeads leads={leadsData.recentLeads} />
             </div>
+
+            {visitorData && (
+              <div className="mt-8">
+                <h4 className="text-xl font-bold mb-4">Visitor Analytics</h4>
+                <VisitorAnalytics data={visitorData} />
+              </div>
+            )}
 
             <div className="grid gap-4 md:grid-cols-1 mt-4">
               <LeadsBySource data={leadsData.leadsBySource} />
