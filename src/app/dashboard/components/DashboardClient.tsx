@@ -121,7 +121,6 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
               clientId={clientId}
               totalLeads={leadsData.stats.totalLeads}
               costPerLead={leadsData.stats.costPerLead}
-              topSource={leadsData.stats.topSource}
               leadsInPeriod={leadsData.stats.leadsInPeriod}
               timeLabel={leadsData.stats.timeLabel}
               newLeadsCount={leadsData.stats.newLeadsCount}
