@@ -1,8 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { formatDistanceToNow } from 'date-fns'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface Lead {
     lead_id: string
@@ -20,7 +23,16 @@ interface RecentLeadsProps {
     leads: Lead[]
 }
 
+const PAGE_SIZE = 10
+
 export function RecentLeads({ leads }: RecentLeadsProps) {
+    const [currentPage, setCurrentPage] = useState(1)
+
+    const totalPages = Math.ceil(leads.length / PAGE_SIZE)
+    const startIndex = (currentPage - 1) * PAGE_SIZE
+    const endIndex = startIndex + PAGE_SIZE
+    const currentLeads = leads.slice(startIndex, endIndex)
+
     const getStatusColor = (status?: string) => {
         switch (status) {
             case 'new':
@@ -49,17 +61,46 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Recent Leads</CardTitle>
-                <CardDescription>Latest leads from your website</CardDescription>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <CardTitle>Recent Leads</CardTitle>
+                        <CardDescription>
+                            Showing {startIndex + 1}-{Math.min(endIndex, leads.length)} of {leads.length} leads
+                        </CardDescription>
+                    </div>
+                    {totalPages > 1 && (
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <span className="text-sm text-muted-foreground">
+                                Page {currentPage} of {totalPages}
+                            </span>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    )}
+                </div>
             </CardHeader>
             <CardContent>
                 <div className="space-y-4">
-                    {leads.length === 0 ? (
+                    {currentLeads.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-8">
                             No leads yet
                         </p>
                     ) : (
-                        leads.map((lead) => (
+                        currentLeads.map((lead) => (
                             <div
                                 key={lead.lead_id}
                                 className="flex items-start justify-between border-b pb-4 last:border-0 last:pb-0"
