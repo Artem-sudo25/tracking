@@ -20,13 +20,34 @@ export async function getVisitorAnalytics(
         .gte('created_at', start)
         .lte('created_at', end)
 
-    const totalVisitors = sessions?.length || 0
+    // Count UNIQUE session_ids (like Google Analytics unique visitors)
+    const uniqueSessionIds = new Set(sessions?.map(s => s.session_id) || [])
+    const totalVisitors = uniqueSessionIds.size
 
-    // Calculate total page views
-    const totalPageViews = sessions?.reduce((sum, s) => sum + (s.page_views || 1), 0) || 0
+    // For page views and bounce rate, we need to aggregate by session_id
+    const sessionMap = new Map()
+    sessions?.forEach(s => {
+        const sid = s.session_id
+        if (!sessionMap.has(sid)) {
+            sessionMap.set(sid, {
+                pageViews: s.page_views || 1,
+                source: s.ft_source || 'Direct',
+                medium: s.ft_medium || '(none)',
+            })
+        } else {
+            // If multiple records for same session, take the max page_views
+            const existing = sessionMap.get(sid)
+            existing.pageViews = Math.max(existing.pageViews, s.page_views || 1)
+        }
+    })
+
+    const uniqueSessions = Array.from(sessionMap.values())
+
+    // Calculate total page views from unique sessions
+    const totalPageViews = uniqueSessions.reduce((sum, s) => sum + s.pageViews, 0)
 
     // Calculate bounce rate (sessions with only 1 page view)
-    const bounces = sessions?.filter(s => (s.page_views || 1) === 1).length || 0
+    const bounces = uniqueSessions.filter(s => s.pageViews === 1).length
     const bounceRate = totalVisitors > 0 ? (bounces / totalVisitors) * 100 : 0
 
     // Pages per session
@@ -54,17 +75,15 @@ export async function getVisitorAnalytics(
     const leadToCustomerRate = (leadsCount || 0) > 0 ? ((customersCount || 0) / (leadsCount || 1)) * 100 : 0
     const visitorToCustomerRate = totalVisitors > 0 ? ((customersCount || 0) / totalVisitors) * 100 : 0
 
-    // Visitors by source
+    // Visitors by source (using unique sessions)
     const sourceMap = new Map()
-    sessions?.forEach(s => {
-        const source = s.ft_source || 'Direct'
-        const medium = s.ft_medium || '(none)'
-        const key = `${source}/${medium}`
+    uniqueSessions.forEach(s => {
+        const key = `${s.source}/${s.medium}`
 
         if (!sourceMap.has(key)) {
             sourceMap.set(key, {
-                source,
-                medium,
+                source: s.source,
+                medium: s.medium,
                 visitors: 0,
                 bounces: 0,
             })
@@ -72,7 +91,7 @@ export async function getVisitorAnalytics(
 
         const entry = sourceMap.get(key)
         entry.visitors += 1
-        if ((s.page_views || 1) === 1) {
+        if (s.pageViews === 1) {
             entry.bounces += 1
         }
     })
