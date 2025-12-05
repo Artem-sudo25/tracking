@@ -41,7 +41,7 @@ export async function getVisitorAnalytics(
     })
 
     // Process each visitor's sessions to deduplicate and aggregate
-    const uniqueVisitors = []
+    const uniqueVisitors: any[] = []
     let totalDeduplicatedPageViews = 0
 
     visitorMap.forEach((visitorSessions, vid) => {
