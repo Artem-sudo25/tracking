@@ -66,17 +66,21 @@ export async function getDashboardData(
         .gte('date', start)
         .lte('date', end)
 
-    // Aggregate spend by source/medium
+    // Aggregate spend by source/medium (case-insensitive)
     const spendMap = new Map()
     adSpend?.forEach(s => {
-        const key = `${s.source}/${s.medium}`
+        // Normalize to lowercase for matching
+        const key = `${s.source.toLowerCase()}/${s.medium.toLowerCase()}`
         spendMap.set(key, (spendMap.get(key) || 0) + s.spend)
     })
 
     // Add spend and ROI to revenueBySource
     const revenueWithROI = revenueBySource.map(source => {
-        const key = `${source.source}/${source.medium}`
+        // Normalize source/medium for matching
+        const key = `${source.source.toLowerCase()}/${source.medium.toLowerCase()}`
         const spend = spendMap.get(key) || 0
+
+        // E-commerce metrics (for purchases)
         const cpa = source.orders > 0 ? spend / source.orders : 0
         const roas = spend > 0 ? source.revenue / spend : 0
         const profit = source.revenue - spend
@@ -192,7 +196,7 @@ export async function getLeadsDashboardData(
     const leadsBySource = Array.from(sourceMap.values())
         .sort((a, b) => b.count - a.count)
 
-    // 6. Get ad spend for this period and calculate ROI
+    // 6. Get ad spend for this period and calculate lead-gen ROI
     const { data: adSpend } = await supabase
         .from('ad_spend')
         .select('source, medium, spend')
@@ -200,24 +204,32 @@ export async function getLeadsDashboardData(
         .gte('date', start)
         .lte('date', end)
 
-    // Aggregate spend by source/medium
+    // Aggregate spend by source/medium (case-insensitive)
     const spendMap = new Map()
     adSpend?.forEach(s => {
-        const key = `${s.source}/${s.medium}`
+        // Normalize to lowercase for matching
+        const key = `${s.source.toLowerCase()}/${s.medium.toLowerCase()}`
         spendMap.set(key, (spendMap.get(key) || 0) + s.spend)
     })
 
-    // Add spend and ROI to leadsBySource
+    // Add spend and lead-gen ROI to leadsBySource
     const leadsWithROI = leadsBySource.map(source => {
-        const key = `${source.source}/${source.medium}`
+        // Normalize source/medium for matching
+        const key = `${source.source.toLowerCase()}/${source.medium.toLowerCase()}`
         const spend = spendMap.get(key) || 0
-        const cpa = source.count > 0 ? spend / source.count : 0
+
+        // Lead-gen metrics
+        const cpl = source.count > 0 ? spend / source.count : 0  // Cost Per Lead
+
+        // TODO: Add lead-to-customer conversion rate when we track conversions
+        // const customers = source.customers || 0
+        // const conversionRate = source.count > 0 ? customers / source.count : 0
+        // const cpc = customers > 0 ? spend / customers : 0  // Cost Per Customer
 
         return {
             ...source,
             spend,
-            cpa,
-            // ROAS will be calculated when we have revenue data
+            cpl,  // This is the key metric for lead-gen!
         }
     })
 

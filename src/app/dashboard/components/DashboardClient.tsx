@@ -8,6 +8,7 @@ import { DateRangePicker } from './DateRangePicker'
 import { ViewToggle } from './ViewToggle'
 import { StatsCards } from './StatsCards'
 import { LeadsStatsCards } from './LeadsStatsCards'
+import { LeadsBySource } from './LeadsBySource'
 import { RevenueBySource } from './RevenueBySource'
 import { RevenueChart } from './RevenueChart'
 import { RecentOrders } from './RecentOrders'
@@ -108,6 +109,10 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
 
             <div className="grid gap-4 md:grid-cols-1">
               <RecentLeads leads={leadsData.recentLeads} />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-1 mt-4">
+              <LeadsBySource data={leadsData.leadsBySource} />
             </div>
           </div>
         )}
