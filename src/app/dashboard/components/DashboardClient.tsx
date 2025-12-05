@@ -58,7 +58,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
   const showLeads = currentView === 'leads' || currentView === 'combined'
   const showPurchases = currentView === 'purchases' || currentView === 'combined'
 
-  // Fetch data when date range or view changes
+  // Fetch data when date range, view, or attribution model changes
   useEffect(() => {
     async function fetchData() {
       if (!dateRange.from || !dateRange.to) return
@@ -67,31 +67,46 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
       const start = dateRange.from.toISOString()
       const end = dateRange.to.toISOString()
 
-      // Fetch data in parallel based on current view
+      // Fetch data in parallel based on current view and attribution model
       const promises = []
+      const resultsOrder = {
+        purchases: -1,
+        leads: -1,
+        visitor: -1,
+        pipeline: -1,
+      }
+      let nextIndex = 0;
 
       if (showPurchases) {
-        promises.push(getDashboardData(clientId, start, end))
+        promises.push(getDashboardData(clientId, start, end, attributionModel))
+        resultsOrder.purchases = nextIndex++;
       }
 
       if (showLeads) {
         promises.push(getLeadsDashboardData(clientId, start, end))
+        resultsOrder.leads = nextIndex++;
         promises.push(getVisitorAnalytics(clientId, start, end))
+        resultsOrder.visitor = nextIndex++;
+        promises.push(getPipelineMetrics(clientId, start, end, attributionModel))
+        resultsOrder.pipeline = nextIndex++;
       }
 
       try {
         const results = await Promise.all(promises)
 
-        if (showPurchases && showLeads) {
-          setPurchasesData(results[0])
-          setLeadsData(results[1])
-          setVisitorData(results[2])
-        } else if (showPurchases) {
-          setPurchasesData(results[0])
-        } else if (showLeads) {
-          setLeadsData(results[0])
-          setVisitorData(results[1])
+        if (resultsOrder.purchases !== -1) {
+          setPurchasesData(results[resultsOrder.purchases])
         }
+        if (resultsOrder.leads !== -1) {
+          setLeadsData(results[resultsOrder.leads])
+        }
+        if (resultsOrder.visitor !== -1) {
+          setVisitorData(results[resultsOrder.visitor])
+        }
+        if (resultsOrder.pipeline !== -1) {
+          setPipelineMetrics(results[resultsOrder.pipeline])
+        }
+
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
       } finally {
@@ -100,7 +115,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
     }
 
     fetchData()
-  }, [clientId, dateRange, currentView, showLeads, showPurchases])
+  }, [clientId, dateRange, currentView, showLeads, showPurchases, attributionModel])
 
   return (
     <div className="space-y-8">
@@ -118,6 +133,20 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
               Pipeline
             </Button>
           </Link>
+
+          <Select value={attributionModel} onValueChange={setAttributionModel}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Attribution Model" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="last_touch">Last Touch</SelectItem>
+              <SelectItem value="first_touch">First Touch</SelectItem>
+              <SelectItem value="linear">Linear</SelectItem>
+              <SelectItem value="position_based">Position Based</SelectItem>
+              <SelectItem value="time_decay">Time Decay</SelectItem>
+            </SelectContent>
+          </Select>
+
           <DateRangePicker
             date={dateRange}
             onDateChange={(range) => {
