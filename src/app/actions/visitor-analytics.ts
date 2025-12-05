@@ -24,31 +24,63 @@ export async function getVisitorAnalytics(
     const uniqueVisitorIds = new Set(sessions?.map(s => s.ip_hash || s.session_id) || [])
     const totalVisitors = uniqueVisitorIds.size
 
-    // For page views and bounce rate, we need to aggregate by unique visitor (ip_hash)
+    // Deduplicate sessions (page views) per visitor
+    // If a visitor has multiple "sessions" (page views) within 5 seconds, treat them as one.
     const visitorMap = new Map()
+
+    // Group all sessions by visitor first
     sessions?.forEach(s => {
         const vid = s.ip_hash || s.session_id
         if (!visitorMap.has(vid)) {
-            visitorMap.set(vid, {
-                pageViews: s.page_views || 1, // Start with page views from this session
-                source: s.ft_source || 'Direct',
-                medium: s.ft_medium || '(none)',
-                sessions: 1
-            })
-        } else {
-            // Aggregate page views for same visitor across multiple sessions
-            const existing = visitorMap.get(vid)
-            existing.pageViews += (s.page_views || 1)
-            existing.sessions += 1
+            visitorMap.set(vid, [])
         }
+        visitorMap.get(vid).push({
+            ...s,
+            parsedDate: new Date(s.created_at).getTime()
+        })
     })
 
-    const uniqueVisitors = Array.from(visitorMap.values())
+    // Process each visitor's sessions to deduplicate and aggregate
+    const uniqueVisitors = []
+    let totalDeduplicatedPageViews = 0
 
-    // Calculate total page views
-    const totalPageViews = sessions?.reduce((sum, s) => sum + (s.page_views || 1), 0) || 0
+    visitorMap.forEach((visitorSessions, vid) => {
+        // Sort by time
+        visitorSessions.sort((a: any, b: any) => a.parsedDate - b.parsedDate)
 
-    // Calculate bounce rate (visitors with only 1 page view total)
+        let validPageViews = 0
+        let lastViewTime = 0
+        let isBounce = true // Assume bounce until proven otherwise (views > 1)
+
+        // Track sources for this visitor (use first non-direct if available, or just first)
+        let primarySource = visitorSessions[0].ft_source || 'Direct'
+        let primaryMedium = visitorSessions[0].ft_medium || '(none)'
+
+        visitorSessions.forEach((s: any) => {
+            // Check if this view is unique enough (e.g. > 5 seconds after last valid view)
+            if (s.parsedDate - lastViewTime > 5000) {
+                validPageViews++
+                lastViewTime = s.parsedDate
+            }
+        })
+
+        // Accumulate total metrics
+        totalDeduplicatedPageViews += validPageViews
+
+        uniqueVisitors.push({
+            vid,
+            pageViews: validPageViews,
+            source: primarySource,
+            medium: primaryMedium,
+            sessions: visitorSessions.length // Raw sessions count for debug if needed
+        })
+    })
+
+    // Update total page views to be the deduplicated count
+    const totalPageViews = totalDeduplicatedPageViews // Was sessions.length or sum(page_views)
+
+    // Calculate bounce rate (visitors with only 1 deduplicated page view)
+    // Note: If validPageViews is 0 (shouldn't happen), it's not a bounce (it's a ghost?). 1 is a bounce.
     const bounces = uniqueVisitors.filter(v => v.pageViews === 1).length
     const bounceRate = totalVisitors > 0 ? (bounces / totalVisitors) * 100 : 0
 
@@ -77,7 +109,7 @@ export async function getVisitorAnalytics(
     const leadToCustomerRate = (leadsCount || 0) > 0 ? ((customersCount || 0) / (leadsCount || 1)) * 100 : 0
     const visitorToCustomerRate = totalVisitors > 0 ? ((customersCount || 0) / totalVisitors) * 100 : 0
 
-    // Visitors by source (using unique visitors)
+    // Visitors by source (using unique visitors and deduplicated stats)
     const sourceMap = new Map()
     uniqueVisitors.forEach(v => {
         const key = `${v.source}/${v.medium}`
