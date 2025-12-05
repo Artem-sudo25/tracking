@@ -45,6 +45,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
     return { from: thirtyDaysAgo, to: today }
   })
 
+  const [purchasesData, setPurchasesData] = useState<DashboardData>(initialData)
   const [leadsData, setLeadsData] = useState<any>(null)
   const [visitorData, setVisitorData] = useState<any>(null)
   const [pipelineMetrics, setPipelineMetrics] = useState<any>(null)
