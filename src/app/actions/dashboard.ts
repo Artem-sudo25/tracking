@@ -1,8 +1,24 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { format } from 'date-fns'
+import { cookies } from 'next/headers'
+import { differenceInDays, differenceInHours, format } from 'date-fns'
 import type { DashboardData } from '@/types'
+
+// Helper function to determine time label
+function getTimeLabel(startDate: string, endDate: string): string {
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
+    const daysDiff = differenceInDays(endDateObj, startDateObj);
+    const hoursDiff = differenceInHours(endDateObj, startDateObj);
+
+    if (hoursDiff < 24) return 'Today';
+    if (daysDiff === 1) return 'Yesterday';
+    if (daysDiff <= 7) return 'This Week';
+    if (daysDiff <= 30) return 'This Month';
+    if (daysDiff <= 90) return 'This Quarter';
+    return 'in Period';
+}
 
 export async function getDashboardData(
     clientId: string,
@@ -134,6 +150,19 @@ export async function getLeadsDashboardData(
     const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
     const end = endDate || new Date().toISOString()
 
+    // Calculate dynamic time label based on date range
+    const startDateObj = new Date(start)
+    const endDateObj = new Date(end)
+    const daysDiff = differenceInDays(endDateObj, startDateObj)
+    const hoursDiff = differenceInHours(endDateObj, startDateObj)
+
+    let timeLabel = 'in Period'
+    if (hoursDiff < 24) timeLabel = 'Today'
+    else if (daysDiff === 1) timeLabel = 'Yesterday'
+    else if (daysDiff <= 7) timeLabel = 'This Week'
+    else if (daysDiff <= 30) timeLabel = 'This Month'
+    else if (daysDiff <= 90) timeLabel = 'This Quarter'
+
     // 1. Fetch all leads
     const { data: leads } = await supabase
         .from('leads')
@@ -248,28 +277,29 @@ export async function getLeadsDashboardData(
         dailyMap.set(date, dailyMap.get(date) + 1)
     })
 
-    const chartData = Array.from(dailyMap.entries())
-        .map(([date, count]) => ({ date, count }))
+    const dailyLeads = Array.from(dailyMap.entries())
+        .map(([date, count]) => ({ date, leads: count }))
 
     // 8. Top lead source
     const topSource = leadsWithROI[0] || { source: 'N/A', medium: 'N/A', count: 0 }
+    const topSourceText = `${topSource.source}/${topSource.medium}`
 
-    // 9. Leads this week
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-    const leadsThisWeek = leads?.filter(l => l.created_at >= weekAgo).length || 0
+    // 9. New leads count
+    const newLeadsCount = leads?.filter(l => l.status === 'new' || !l.status).length || 0
 
     return {
         stats: {
             totalLeads,
             conversionRate,
             avgLeadValue,
-            topSource: `${topSource.source}/${topSource.medium}`,
-            leadsThisWeek,
-            newLeadsCount: leads?.filter(l => l.status === 'new' || !l.status).length || 0
+            topSource: topSourceText,
+            leadsInPeriod: totalLeads, // All leads in selected period
+            timeLabel, // Dynamic label: "Today", "This Week", etc.
+            newLeadsCount,
         },
         leadsByFormType,
         leadsBySource: leadsWithROI,
         recentLeads: leads?.slice(0, 10) || [],
-        chartData
+        chartData: dailyLeads,
     }
 }

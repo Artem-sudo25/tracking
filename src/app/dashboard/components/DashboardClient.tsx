@@ -103,7 +103,8 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
               conversionRate={leadsData.stats.conversionRate}
               avgLeadValue={leadsData.stats.avgLeadValue}
               topSource={leadsData.stats.topSource}
-              leadsThisWeek={leadsData.stats.leadsThisWeek}
+              leadsInPeriod={leadsData.stats.leadsInPeriod}
+              timeLabel={leadsData.stats.timeLabel}
               newLeadsCount={leadsData.stats.newLeadsCount}
             />
 

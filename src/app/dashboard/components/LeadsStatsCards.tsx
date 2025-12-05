@@ -6,7 +6,8 @@ interface LeadsStatsCardsProps {
     conversionRate: number
     avgLeadValue: number
     topSource: string
-    leadsThisWeek: number
+    leadsInPeriod: number
+    timeLabel: string
     newLeadsCount: number
 }
 
@@ -15,7 +16,8 @@ export function LeadsStatsCards({
     conversionRate,
     avgLeadValue,
     topSource,
-    leadsThisWeek,
+    leadsInPeriod,
+    timeLabel,
     newLeadsCount
 }: LeadsStatsCardsProps) {
     return (
@@ -63,26 +65,13 @@ export function LeadsStatsCards({
 
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Top Lead Source</CardTitle>
-                    <Target className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold truncate">{topSource}</div>
-                    <p className="text-xs text-muted-foreground">
-                        Primary source
-                    </p>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Leads This Week</CardTitle>
+                    <CardTitle className="text-sm font-medium">Leads {timeLabel}</CardTitle>
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold">{leadsThisWeek}</div>
+                    <div className="text-2xl font-bold">{leadsInPeriod}</div>
                     <p className="text-xs text-muted-foreground">
-                        Last 7 days
+                        In selected period
                     </p>
                 </CardContent>
             </Card>
