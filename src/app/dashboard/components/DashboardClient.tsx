@@ -120,17 +120,12 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
             <LeadsStatsCards
               clientId={clientId}
               totalLeads={leadsData.stats.totalLeads}
-              conversionRate={leadsData.stats.conversionRate}
-              avgLeadValue={leadsData.stats.avgLeadValue}
+              costPerLead={leadsData.stats.costPerLead}
               topSource={leadsData.stats.topSource}
               leadsInPeriod={leadsData.stats.leadsInPeriod}
               timeLabel={leadsData.stats.timeLabel}
               newLeadsCount={leadsData.stats.newLeadsCount}
             />
-
-            <div className="grid gap-4 md:grid-cols-1">
-              <RecentLeads leads={leadsData.recentLeads} />
-            </div>
 
             {visitorData && (
               <div className="mt-8">
@@ -141,6 +136,10 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
 
             <div className="grid gap-4 md:grid-cols-1 mt-4">
               <LeadsBySource data={leadsData.leadsBySource} />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-1 mt-4">
+              <RecentLeads leads={leadsData.recentLeads} />
             </div>
           </div>
         )}

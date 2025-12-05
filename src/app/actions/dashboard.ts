@@ -186,8 +186,17 @@ export async function getLeadsDashboardData(
     const convertedLeads = new Set(purchases?.map(p => p.lead_id) || [])
     const conversionRate = totalLeads > 0 ? convertedLeads.size / totalLeads : 0
 
-    // 3. Average lead value
-    const avgLeadValue = leads?.reduce((sum, l) => sum + (l.lead_value || 0), 0) / (totalLeads || 1)
+    // 3. Cost per lead (CPL)
+    // Get ad spend for the period
+    const { data: adSpendData } = await supabase
+        .from('ad_spend')
+        .select('amount')
+        .eq('client_id', clientId)
+        .gte('date', start)
+        .lte('date', end)
+
+    const totalSpend = adSpendData?.reduce((sum, s) => sum + (s.amount || 0), 0) || 0
+    const costPerLead = totalLeads > 0 ? totalSpend / totalLeads : 0
 
     // 4. Leads by form type
     const formTypeMap = new Map()
@@ -314,8 +323,7 @@ export async function getLeadsDashboardData(
     return {
         stats: {
             totalLeads,
-            conversionRate,
-            avgLeadValue,
+            costPerLead,
             topSource: topSourceText,
             leadsInPeriod: totalLeads, // All leads in selected period
             timeLabel, // Dynamic label: "Today", "This Week", etc.
@@ -323,7 +331,7 @@ export async function getLeadsDashboardData(
         },
         leadsByFormType,
         leadsBySource: leadsWithROI,
-        recentLeads: leads?.slice(0, 10) || [],
+        recentLeads: leads?.slice(0, 5) || [],
         chartData: dailyLeads,
     }
 }
