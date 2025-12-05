@@ -58,6 +58,38 @@ export async function getDashboardData(
     const revenueBySource = Array.from(sourceMap.values())
         .sort((a, b) => b.revenue - a.revenue)
 
+    // Get ad spend for this period
+    const { data: adSpend } = await supabase
+        .from('ad_spend')
+        .select('source, medium, spend')
+        .eq('client_id', clientId)
+        .gte('date', start)
+        .lte('date', end)
+
+    // Aggregate spend by source/medium
+    const spendMap = new Map()
+    adSpend?.forEach(s => {
+        const key = `${s.source}/${s.medium}`
+        spendMap.set(key, (spendMap.get(key) || 0) + s.spend)
+    })
+
+    // Add spend and ROI to revenueBySource
+    const revenueWithROI = revenueBySource.map(source => {
+        const key = `${source.source}/${source.medium}`
+        const spend = spendMap.get(key) || 0
+        const cpa = source.orders > 0 ? spend / source.orders : 0
+        const roas = spend > 0 ? source.revenue / spend : 0
+        const profit = source.revenue - spend
+
+        return {
+            ...source,
+            spend,
+            cpa,
+            roas,
+            profit
+        }
+    })
+
     // 5. Revenue Chart (Daily)
     const dailyMap = new Map()
     orders?.forEach(o => {
@@ -81,7 +113,7 @@ export async function getDashboardData(
             attributionRate,
             avgDaysToConvert
         },
-        revenueBySource,
+        revenueBySource: revenueWithROI,
         recentOrders: orders?.slice(0, 5) || [],
         chartData
     }
@@ -160,7 +192,36 @@ export async function getLeadsDashboardData(
     const leadsBySource = Array.from(sourceMap.values())
         .sort((a, b) => b.count - a.count)
 
-    // 6. Leads over time (daily)
+    // 6. Get ad spend for this period and calculate ROI
+    const { data: adSpend } = await supabase
+        .from('ad_spend')
+        .select('source, medium, spend')
+        .eq('client_id', clientId)
+        .gte('date', start)
+        .lte('date', end)
+
+    // Aggregate spend by source/medium
+    const spendMap = new Map()
+    adSpend?.forEach(s => {
+        const key = `${s.source}/${s.medium}`
+        spendMap.set(key, (spendMap.get(key) || 0) + s.spend)
+    })
+
+    // Add spend and ROI to leadsBySource
+    const leadsWithROI = leadsBySource.map(source => {
+        const key = `${source.source}/${source.medium}`
+        const spend = spendMap.get(key) || 0
+        const cpa = source.count > 0 ? spend / source.count : 0
+
+        return {
+            ...source,
+            spend,
+            cpa,
+            // ROAS will be calculated when we have revenue data
+        }
+    })
+
+    // 7. Leads over time (daily)
     const dailyMap = new Map()
     leads?.forEach(l => {
         const date = format(new Date(l.created_at), 'MMM dd')
@@ -173,10 +234,10 @@ export async function getLeadsDashboardData(
     const chartData = Array.from(dailyMap.entries())
         .map(([date, count]) => ({ date, count }))
 
-    // 7. Top lead source
-    const topSource = leadsBySource[0] || { source: 'N/A', medium: 'N/A', count: 0 }
+    // 8. Top lead source
+    const topSource = leadsWithROI[0] || { source: 'N/A', medium: 'N/A', count: 0 }
 
-    // 8. Leads this week
+    // 9. Leads this week
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const leadsThisWeek = leads?.filter(l => l.created_at >= weekAgo).length || 0
 
@@ -190,7 +251,7 @@ export async function getLeadsDashboardData(
             newLeadsCount: leads?.filter(l => l.status === 'new' || !l.status).length || 0
         },
         leadsByFormType,
-        leadsBySource,
+        leadsBySource: leadsWithROI,
         recentLeads: leads?.slice(0, 10) || [],
         chartData
     }
