@@ -350,5 +350,6 @@ function parseUserAgent(ua: string) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|t.js|.*\\.).*)'],
+  // Matches all routes except next internals, static files, but INCLUDES /api
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|t.js|.*\\.).*)'],
 }
