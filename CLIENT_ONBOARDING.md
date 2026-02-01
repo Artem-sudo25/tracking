@@ -299,6 +299,20 @@ SET settings = jsonb_set(
 )
 WHERE client_id = 'client_acme';
 ```
+302: 
+303: ### **IMPORTANT: Going Live (Removing Test Code)**
+304: 
+305: After successful testing, you **MUST** remove the `test_event_code` so Facebook optimizes ads based on real data.
+306: 
+307: Run this SQL:
+308: 
+309: ```sql
+310: UPDATE clients 
+311: SET settings = jsonb_set(settings, '{facebook, test_event_code}', 'null')
+312: WHERE client_id = 'client_acme';
+313: ```
+314: 
+315: ### Google Offline Conversions
 
 ### Google Offline Conversions
 

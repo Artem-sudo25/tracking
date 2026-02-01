@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { sendPageViewToFacebook } from '@/lib/forwarding/facebook-pageview'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -169,6 +170,45 @@ export async function POST(request: NextRequest) {
             })
         }
 
+        // === FORWARD TO FACEBOOK (SERVER-SIDE PAGEVIEW) ===
+        if (consentStatus === 'granted') {
+            const fbc = request.cookies.get('_fbc')?.value
+            const fbp = request.cookies.get('_fbp')?.value
+            const country = request.headers.get('x-vercel-ip-country')
+            const city = request.headers.get('x-vercel-ip-city')
+
+            const { data: clientData } = await supabase
+                .from('clients')
+                .select('settings')
+                .eq('client_id', CLIENT_ID)
+                .single()
+
+            const settings = clientData?.settings || {}
+
+            if (settings.facebook?.pixel_id && settings.facebook?.access_token) {
+                // Construct session object for forwarding
+                const sessionForFb = {
+                    fbc: fbc || undefined,
+                    fbp: fbp || undefined,
+                    ip_hash: ipHash,
+                    user_agent: userAgent,
+                    country: country,
+                    city: city,
+                    ft_landing: touch.landing,
+                    lt_landing: touch.landing
+                }
+
+                await sendPageViewToFacebook({
+                    session: sessionForFb,
+                    url: body.referrer || body.landing,
+                    eventId: `${CLIENT_ID}_pv_${sessionId}_${Date.now()}`,
+                    pixelId: settings.facebook.pixel_id,
+                    accessToken: settings.facebook.access_token,
+                    testEventCode: settings.facebook.test_event_code
+                })
+            }
+        }
+
         // Return session_id so client can store it
         const response = NextResponse.json({ session_id: sessionId })
 
@@ -189,6 +229,8 @@ export async function POST(request: NextRequest) {
     }
 }
 
+// ... (helper functions area)
+
 async function hashString(str: string): Promise<string> {
     const encoder = new TextEncoder()
     const data = encoder.encode(str)
@@ -200,6 +242,7 @@ async function hashString(str: string): Promise<string> {
 }
 
 function parseUserAgent(ua: string) {
+    // ... (rest of parser)
     let type = 'desktop'
     if (/mobile/i.test(ua)) type = 'mobile'
     else if (/tablet|ipad/i.test(ua)) type = 'tablet'

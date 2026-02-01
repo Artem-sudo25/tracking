@@ -163,8 +163,16 @@ export async function POST(request: NextRequest) {
 
             const settings = clientData?.settings || {}
 
+            // Check if already sent (to prevent double events on retries)
+            const { data: existingLead } = await supabase
+                .from('leads')
+                .select('sent_to_facebook, sent_to_google')
+                .eq('client_id', CLIENT_ID)
+                .eq('external_lead_id', lead.external_id)
+                .single()
+
             // Facebook Lead Ads
-            if (settings.facebook?.pixel_id && settings.facebook?.access_token) {
+            if (settings.facebook?.pixel_id && settings.facebook?.access_token && !existingLead?.sent_to_facebook) {
                 fbResult = await sendLeadToFacebook({
                     session,
                     lead,
@@ -183,7 +191,7 @@ export async function POST(request: NextRequest) {
             }
 
             // Google Offline Conversions
-            if (settings.google?.measurement_id && settings.google?.api_secret) {
+            if (settings.google?.measurement_id && settings.google?.api_secret && !existingLead?.sent_to_google) {
                 googleResult = await sendLeadToGoogle({
                     session,
                     lead,
