@@ -15,16 +15,49 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next()
   const url = request.nextUrl
   const headers = request.headers
-  
+
+  const origin = headers.get('origin')
+  const allowedOrigins = [
+    'https://haloagency.cz',
+    'https://www.haloagency.cz',
+    'https://www.propradlo.cz',
+    'http://localhost:3000',
+    'https://haloagency-website.vercel.app'
+  ]
+
+  // Handle Simple Requests (GET/POST) - Add CORS headers to response
+  if (origin && allowedOrigins.includes(origin)) {
+    response.headers.set('Access-Control-Allow-Origin', origin)
+    response.headers.set('Access-Control-Allow-Credentials', 'true')
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  }
+
+  // Handle Preflight Requests (OPTIONS)
+  if (request.method === 'OPTIONS') {
+    if (origin && allowedOrigins.includes(origin)) {
+      return new NextResponse(null, {
+        status: 200,
+        headers: {
+          'Access-Control-Allow-Origin': origin,
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        },
+      })
+    }
+    return new NextResponse(null, { status: 200 })
+  }
+
   // === CHECK FOR EXISTING SESSION ===
   const existingSessionId = request.cookies.get('_halo')?.value
-  
+
   // === DETECT CONSENT ===
   // Read from common CMPs
   const consentCookie = request.cookies.get('cookieyes-consent')?.value ||
-                        request.cookies.get('CookieConsent')?.value ||
-                        request.cookies.get('cookie_consent')?.value
-  
+    request.cookies.get('CookieConsent')?.value ||
+    request.cookies.get('cookie_consent')?.value
+
   let consentStatus = 'unknown'
   if (consentCookie) {
     // CookieYes format
@@ -40,7 +73,7 @@ export async function middleware(request: NextRequest) {
       consentStatus = 'denied'
     }
   }
-  
+
   // === PARSE URL PARAMS ===
   const params = {
     utm_source: url.searchParams.get('utm_source'),
@@ -55,14 +88,14 @@ export async function middleware(request: NextRequest) {
     ttclid: url.searchParams.get('ttclid'),
     msclkid: url.searchParams.get('msclkid'),
   }
-  
+
   const hasNewCampaign = params.utm_source || params.gclid || params.fbclid || params.ttclid
-  
+
   // === FAST PATH: No new data, existing session ===
   if (existingSessionId && !hasNewCampaign && consentStatus !== 'denied') {
     return response
   }
-  
+
   // === PARSE REFERRER ===
   const refererFull = headers.get('referer')
   let refererDomain = null
@@ -70,8 +103,8 @@ export async function middleware(request: NextRequest) {
     if (refererFull && !refererFull.includes(url.hostname)) {
       refererDomain = new URL(refererFull).hostname
     }
-  } catch {}
-  
+  } catch { }
+
   // === CONSENT DENIED: Anonymous tracking only ===
   if (consentStatus === 'denied') {
     // Store minimal anonymous event (no PII)
@@ -91,31 +124,31 @@ export async function middleware(request: NextRequest) {
     // No cookie set, no PII captured
     return response
   }
-  
+
   // === CONSENT GRANTED OR UNKNOWN: Full tracking ===
-  
+
   // Parse headers
   const userAgent = headers.get('user-agent') || ''
   const language = headers.get('accept-language')?.split(',')[0] || 'unknown'
   const ip = headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
-  
+
   // Vercel geo headers
   const country = headers.get('x-vercel-ip-country') || null
   const city = headers.get('x-vercel-ip-city') || null
   const region = headers.get('x-vercel-ip-region') || null
-  
+
   // Hash IP for privacy
   const ipHash = await hashString(ip)
-  
+
   // Parse user agent
   const device = parseUserAgent(userAgent)
-  
+
   // === FACEBOOK COOKIES ===
   // fbc: Facebook click cookie (from fbclid)
   // fbp: Facebook browser ID
   let fbc = request.cookies.get('_fbc')?.value
   let fbp = request.cookies.get('_fbp')?.value
-  
+
   // Generate if missing (Meta-approved regeneration)
   if (!fbc && params.fbclid) {
     fbc = `fb.1.${Date.now()}.${params.fbclid}`
@@ -123,7 +156,7 @@ export async function middleware(request: NextRequest) {
   if (!fbp) {
     fbp = `fb.1.${Date.now()}.${Math.floor(Math.random() * 10000000000)}`
   }
-  
+
   // === BUILD TOUCH DATA ===
   const touch = {
     source: params.utm_source,
@@ -136,18 +169,18 @@ export async function middleware(request: NextRequest) {
     landing: url.pathname + url.search,
     timestamp: new Date().toISOString(),
   }
-  
+
   const hasTouchData = touch.source || touch.referrer || params.gclid || params.fbclid
-  
+
   // === NEW SESSION ===
   if (!existingSessionId) {
     const sessionId = crypto.randomUUID()
-    
+
     await supabase.from('sessions').insert({
       client_id: CLIENT_ID,
       session_id: sessionId,
       consent_status: consentStatus,
-      
+
       // First touch
       ft_source: touch.source,
       ft_medium: touch.medium,
@@ -158,7 +191,7 @@ export async function middleware(request: NextRequest) {
       ft_referrer_full: touch.referrer_full,
       ft_landing: touch.landing,
       ft_timestamp: touch.timestamp,
-      
+
       // Last touch (same as first initially)
       lt_source: touch.source,
       lt_medium: touch.medium,
@@ -168,7 +201,7 @@ export async function middleware(request: NextRequest) {
       lt_referrer: touch.referrer,
       lt_landing: touch.landing,
       lt_timestamp: touch.timestamp,
-      
+
       // Click IDs
       gclid: params.gclid,
       gbraid: params.gbraid,
@@ -178,7 +211,7 @@ export async function middleware(request: NextRequest) {
       fbp: fbp,
       ttclid: params.ttclid,
       msclkid: params.msclkid,
-      
+
       // Device
       user_agent: userAgent,
       device_type: device.type,
@@ -186,20 +219,20 @@ export async function middleware(request: NextRequest) {
       browser_version: device.browserVersion,
       os: device.os,
       os_version: device.osVersion,
-      
+
       // Geo
       ip_hash: ipHash,
       country: country,
       city: city,
       region: region,
-      
+
       // User prefs
       language: language,
-      
+
       // Store all URL params for flexibility
       custom_params: Object.fromEntries(url.searchParams.entries()),
     })
-    
+
     // Set session cookie (365 days)
     response.cookies.set('_halo', sessionId, {
       httpOnly: false,
@@ -208,7 +241,7 @@ export async function middleware(request: NextRequest) {
       path: '/',
       sameSite: 'lax',
     })
-    
+
     // Set Facebook cookies
     if (fbc) {
       response.cookies.set('_fbc', fbc, {
@@ -219,7 +252,7 @@ export async function middleware(request: NextRequest) {
         sameSite: 'lax',
       })
     }
-    
+
     if (fbp) {
       response.cookies.set('_fbp', fbp, {
         httpOnly: false,
@@ -229,11 +262,11 @@ export async function middleware(request: NextRequest) {
         sameSite: 'lax',
       })
     }
-    
+
   } else if (hasTouchData) {
     // === RETURNING USER WITH NEW CAMPAIGN ===
     // Update last touch only, preserve first touch
-    
+
     const updateData: any = {
       lt_source: touch.source,
       lt_medium: touch.medium,
@@ -245,7 +278,7 @@ export async function middleware(request: NextRequest) {
       lt_timestamp: touch.timestamp,
       updated_at: new Date().toISOString(),
     }
-    
+
     // Update click IDs if new ones present
     if (params.gclid) updateData.gclid = params.gclid
     if (params.fbclid) {
@@ -254,13 +287,13 @@ export async function middleware(request: NextRequest) {
     }
     if (params.ttclid) updateData.ttclid = params.ttclid
     if (params.msclkid) updateData.msclkid = params.msclkid
-    
+
     await supabase.from('sessions')
       .update(updateData)
       .eq('session_id', existingSessionId)
       .eq('client_id', CLIENT_ID)
   }
-  
+
   return response
 }
 
@@ -280,7 +313,7 @@ function parseUserAgent(ua: string) {
   let type = 'desktop'
   if (/mobile/i.test(ua)) type = 'mobile'
   else if (/tablet|ipad/i.test(ua)) type = 'tablet'
-  
+
   let browser = 'Unknown'
   let browserVersion = ''
   if (/edg/i.test(ua)) {
@@ -296,7 +329,7 @@ function parseUserAgent(ua: string) {
     browser = 'Firefox'
     browserVersion = ua.match(/firefox\/(\d+)/i)?.[1] || ''
   }
-  
+
   let os = 'Unknown'
   let osVersion = ''
   if (/windows/i.test(ua)) {
@@ -312,7 +345,7 @@ function parseUserAgent(ua: string) {
     os = 'Android'
     osVersion = ua.match(/android (\d+\.?\d*)/i)?.[1] || ''
   }
-  
+
   return { type, browser, browserVersion, os, osVersion }
 }
 

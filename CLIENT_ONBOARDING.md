@@ -70,18 +70,42 @@ Just update the `CLIENT_ID` environment variable in Vercel to `client_acme` and 
 
 ---
 
-## Part 3: Install Tracking Script on Client's Website (5 minutes)
+## Part 3: Install Measurement Scripts (5 minutes)
 
-### Step 1: Add Tracking Script
+Add **BOTH** of these scripts to the `<head>` section of **every page** on the client's website.
 
-Add this script to the `<head>` section of **every page** on the client's website:
+### 1. Meta Pixel (Client-Side Tracking)
+This tracks standard page views directly in the browser.
+
+```html
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '2213571369171089'); // Data Dataset ID
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=2213571369171089&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+```
+
+### 2. HaloTrack (Server-Side Attribution)
+This tracks sessions and enables the robust Conversions API.
 
 ```html
 <!-- HaloTrack Attribution Tracking -->
 <script src="https://your-halotrack-domain.vercel.app/t.js" async></script>
 ```
 
-Replace `your-halotrack-domain.vercel.app` with your actual HaloTrack URL.
+**Crucial Note**: The Meta Pixel handles "lightweight" tracking, while HaloTrack handles the "heavy lifting" (server-side matching, attribution, and Conversions API). Facebook effectively combines these two signals.
 
 ### Step 2: Verify Installation
 
