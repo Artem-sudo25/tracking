@@ -74,6 +74,10 @@ export default function RootLayout({
           </noscript>
         )}
 
+
+        {/* HaloTrack Attribution Script */}
+        <Script src="/t.js" strategy="lazyOnload" />
+
         {children}
       </body>
     </html>

@@ -153,7 +153,13 @@ export async function POST(request: NextRequest) {
         let fbResult = null
         let googleResult = null
 
+        console.log(`[Lead Webhook] Processing lead: ${lead.external_id}`);
+        console.log(`[Lead Webhook] Session found: ${session ? session.session_id : 'NO'}`);
+        if (session) console.log(`[Lead Webhook] Session Consent: ${session.consent_status}`);
+        console.log(`[Lead Webhook] Lead Consent Given: ${lead.consent_given}`);
+
         if (session && session.consent_status !== 'denied' && lead.consent_given) {
+            console.log('[Lead Webhook] Conditions met. Forwarding to Ad Platforms...');
             // Get client settings
             const { data: clientData } = await supabase
                 .from('clients')
@@ -181,6 +187,7 @@ export async function POST(request: NextRequest) {
                     accessToken: settings.facebook.access_token,
                     testEventCode: settings.facebook.test_event_code,
                 })
+                console.log(`[Lead Webhook] FB Result: ${JSON.stringify(fbResult)}`);
 
                 if (fbResult?.success) {
                     await supabase.from('leads')
@@ -188,6 +195,8 @@ export async function POST(request: NextRequest) {
                         .eq('client_id', CLIENT_ID)
                         .eq('external_lead_id', lead.external_id)
                 }
+            } else {
+                console.log('[Lead Webhook] FB Skipped: Missing settings or already sent');
             }
 
             // Google Offline Conversions
@@ -198,6 +207,7 @@ export async function POST(request: NextRequest) {
                     measurementId: settings.google.measurement_id,
                     apiSecret: settings.google.api_secret,
                 })
+                console.log(`[Lead Webhook] Google Result: ${JSON.stringify(googleResult)}`);
 
                 if (googleResult?.success) {
                     await supabase.from('leads')
@@ -205,7 +215,14 @@ export async function POST(request: NextRequest) {
                         .eq('client_id', CLIENT_ID)
                         .eq('external_lead_id', lead.external_id)
                 }
+            } else {
+                console.log('[Lead Webhook] Google Skipped: Missing settings or already sent');
             }
+        } else {
+            console.log('[Lead Webhook] SKIPPED FORWARDING. Reason:');
+            if (!session) console.log('- No Session found');
+            if (session && session.consent_status === 'denied') console.log('- Session Consent is DENIED');
+            if (!lead.consent_given) console.log('- Lead Consent NOT given');
         }
 
         return NextResponse.json({
