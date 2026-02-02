@@ -259,7 +259,18 @@ For landing pages with **multiple forms** (e.g., Contact, Demo Request, Quote):
 
 ## Part 6: Testing (5 minutes)
 
-### Test Lead Submission
+#### 7. Lead Value Strategy (ROAS)
+To help ad algorithms find better clients, we assign estimated values to leads:
+
+| Form Type | Logic | Value Range (CZK) |
+| :--- | :--- | :--- |
+| **Pricing Cards** | Exact Package Price | 18.000, 35.000, 50.000 Kč |
+| **Ads Magnet** | Based on Budget | 8.000 - 30.000 Kč |
+| **Growth Plan** | Based on Business Type | 8.000 - 25.000 Kč |
+| **Web Project** | High Intent Fixed | 25.000 Kč |
+| **Audit** | Lead Magnet | 2.000 Kč |
+
+*This allows you to optimize for "Value" instead of just "Volume".*
 
 1. **Open client's website** with UTM parameters:
    ```
@@ -314,7 +325,13 @@ WHERE client_id = 'client_acme';
 314: 
 315: ### Google Offline Conversions
 
-### Google Offline Conversions
+### Google Analytics 4 (Hybrid Tracking)
+To enable Server-Side PageViews and Offline Conversions:
+
+1. **Measurement ID:** Admin → Data Streams → Click stream → Copy **MEASUREMENT ID** (starts with G-).
+2. **API Secret:** In the same stream settings → Measurement Protocol API secrets → Create new → Copy **Secret Value**.
+
+Run this SQL to save them:
 
 ```sql
 UPDATE clients 

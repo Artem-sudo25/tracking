@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendPageViewToFacebook } from '@/lib/forwarding/facebook-pageview'
+import { sendPageViewToGoogle } from '@/lib/forwarding/google-pageview'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -205,6 +206,17 @@ export async function POST(request: NextRequest) {
                     pixelId: settings.facebook.pixel_id,
                     accessToken: settings.facebook.access_token,
                     testEventCode: settings.facebook.test_event_code
+                })
+            }
+
+            // Google Analytics 4 (Server-Side)
+            if (settings.google?.measurement_id && settings.google?.api_secret) {
+                // Fire and forget
+                await sendPageViewToGoogle({
+                    session: { session_id: sessionId, user_id: request.cookies.get('user_id')?.value },
+                    url: body.referrer || body.landing,
+                    measurementId: settings.google.measurement_id,
+                    apiSecret: settings.google.api_secret
                 })
             }
         }

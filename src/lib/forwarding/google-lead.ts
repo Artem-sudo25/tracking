@@ -17,7 +17,7 @@ export async function sendLeadToGoogle(params: GoogleLeadParams) {
         const payload = {
             client_id: session.session_id,
             events: [{
-                name: 'generate_lead',
+                name: 'generate_lead_v2',
                 params: {
                     value: lead.value || 0,
                     currency: lead.currency || 'CZK',
