@@ -22,6 +22,7 @@ export async function sendLeadToGoogle(params: GoogleLeadParams) {
                     value: lead.value || 0,
                     currency: lead.currency || 'CZK',
                     form_type: lead.form_type || 'contact',
+                    transaction_id: lead.external_id, // Critical for deduplication
                 },
             }],
             user_data: {

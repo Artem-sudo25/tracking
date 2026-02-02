@@ -120,8 +120,9 @@ export async function POST(request: NextRequest) {
             match_type: 'none',
         }
 
-        // Generate event ID for deduplication
-        const eventId = `${CLIENT_ID}_lead_${lead.external_id}_${Date.now()}`
+        // Generate deterministic event ID for deduplication
+        // We use the raw external_id (UUID from client) to match the Browser Pixel eventID
+        const eventId = lead.external_id
 
         // === SAVE LEAD ===
         const { error: leadError } = await supabase.from('leads').upsert({
