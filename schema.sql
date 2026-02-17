@@ -237,6 +237,65 @@ CREATE TABLE leads (
 );
 
 
+-- AD SPEND TABLE (manual/imported ad spend for ROI calculations)
+CREATE TABLE ad_spend (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  source TEXT NOT NULL,
+  medium TEXT NOT NULL,
+  campaign TEXT,
+  spend NUMERIC(10,2) NOT NULL,
+  currency TEXT DEFAULT 'CZK',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(client_id, date, source, medium, campaign)
+);
+
+-- PURCHASES TABLE (links leads to paying customers)
+CREATE TABLE purchases (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  lead_id TEXT,
+  external_order_id TEXT,
+  amount NUMERIC(10,2),
+  currency TEXT DEFAULT 'CZK',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- TOUCHPOINTS TABLE (full visitor journey for multi-touch attribution)
+CREATE TABLE touchpoints (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  source TEXT,
+  medium TEXT,
+  campaign TEXT,
+  term TEXT,
+  content TEXT,
+  referrer TEXT,
+  landing_page TEXT,
+  page_path TEXT,
+  gclid TEXT,
+  fbclid TEXT,
+  ttclid TEXT,
+  msclkid TEXT,
+  touchpoint_number INT,
+  timestamp TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- USER DASHBOARD ACTIVITY (tracks last-seen timestamps for "new leads" badge)
+CREATE TABLE user_dashboard_activity (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL,
+  client_id TEXT NOT NULL,
+  last_leads_view TIMESTAMPTZ,
+  last_purchases_view TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, client_id)
+);
+
 -- INDEXES
 CREATE INDEX idx_sessions_client ON sessions(client_id);
 CREATE INDEX idx_sessions_sid ON sessions(client_id, session_id);
@@ -255,6 +314,13 @@ CREATE INDEX idx_leads_client ON leads(client_id);
 CREATE INDEX idx_leads_created ON leads(created_at);
 CREATE INDEX idx_leads_email ON leads(email) WHERE email IS NOT NULL;
 CREATE INDEX idx_leads_session ON leads(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX idx_ad_spend_client ON ad_spend(client_id);
+CREATE INDEX idx_ad_spend_date ON ad_spend(client_id, date);
+CREATE INDEX idx_touchpoints_client ON touchpoints(client_id);
+CREATE INDEX idx_touchpoints_session ON touchpoints(session_id);
+CREATE INDEX idx_purchases_client ON purchases(client_id);
+CREATE INDEX idx_purchases_lead ON purchases(lead_id) WHERE lead_id IS NOT NULL;
+CREATE INDEX idx_user_activity_user ON user_dashboard_activity(user_id, client_id);
 
 
 -- ROW LEVEL SECURITY
@@ -263,6 +329,10 @@ ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE anon_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ad_spend ENABLE ROW LEVEL SECURITY;
+ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE touchpoints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_dashboard_activity ENABLE ROW LEVEL SECURITY;
 
 
 -- Policies: Service role has full access
@@ -271,4 +341,8 @@ CREATE POLICY "Service role full access" ON events FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON orders FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON anon_events FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON leads FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON ad_spend FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON purchases FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON touchpoints FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON user_dashboard_activity FOR ALL USING (true);
 

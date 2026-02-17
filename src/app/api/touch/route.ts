@@ -51,19 +51,45 @@ export async function POST(request: NextRequest) {
         const userAgent = request.headers.get('user-agent') || ''
         const device = parseUserAgent(userAgent)
 
+        // Auto-detect source/medium from click IDs when UTMs are absent
+        let inferredSource = body.utm_source || null
+        let inferredMedium = body.utm_medium || null
+        if (!inferredSource) {
+            if (body.gclid || body.gbraid || body.wbraid) {
+                inferredSource = 'google'
+                inferredMedium = inferredMedium || 'cpc'
+            } else if (body.fbclid) {
+                inferredSource = 'facebook'
+                inferredMedium = inferredMedium || 'cpc'
+            } else if (body.ttclid) {
+                inferredSource = 'tiktok'
+                inferredMedium = inferredMedium || 'cpc'
+            } else if (body.msclkid) {
+                inferredSource = 'bing'
+                inferredMedium = inferredMedium || 'cpc'
+            }
+        }
+
+        const referrerHostname = (() => {
+            try { return body.referrer ? new URL(body.referrer).hostname : null }
+            catch { return null }
+        })()
+
         const touch = {
-            source: body.utm_source,
-            medium: body.utm_medium,
+            source: inferredSource,
+            medium: inferredMedium,
             campaign: body.utm_campaign,
             term: body.utm_term,
             content: body.utm_content,
-            referrer: body.referrer ? new URL(body.referrer).hostname : null,
-            referrer_full: body.referrer,
+            referrer: referrerHostname,
+            referrer_full: body.referrer || null,
             landing: body.landing,
             timestamp: new Date().toISOString(),
         }
 
-        const hasTouchData = touch.source || touch.referrer || body.gclid || body.fbclid
+        // Only count as a meaningful touch if there's actual marketing data (not just a referrer)
+        // This prevents a direct/untagged page navigation from overwriting a paid campaign attribution
+        const hasTouchData = touch.source || body.gclid || body.fbclid || body.ttclid || body.msclkid
 
         if (!sessionId) {
             // Create new session

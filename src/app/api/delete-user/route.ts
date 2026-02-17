@@ -10,6 +10,11 @@ const CLIENT_ID = process.env.CLIENT_ID!
 
 export async function DELETE(request: NextRequest) {
     try {
+        const secret = request.headers.get('x-webhook-secret')
+        if (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET) {
+            return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+        }
+
         const { searchParams } = new URL(request.url)
         const email = searchParams.get('email')
 

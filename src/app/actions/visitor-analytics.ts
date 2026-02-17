@@ -50,22 +50,49 @@ export async function getVisitorAnalytics(
 
         let validPageViews = 0
         let lastViewTime = 0
-        let isBounce = true // Assume bounce until proven otherwise (views > 1)
+
+        visitorSessions.forEach((s: any) => {
+            if (s.parsedDate - lastViewTime > 5000) {
+                validPageViews++
+                lastViewTime = s.parsedDate
+            }
+        })
+        if (validPageViews === 0) validPageViews = 1 // every visitor counts as at least 1 page view
 
         // Track sources for this visitor
         // Strategy: First Non-Direct Click (Standard Acquisition)
         // If all are direct, then Direct.
-        // We look for the first session that has a valid source/medium.
+        // We look for the first session that has a valid source/medium or click ID.
         let primarySource = 'Direct'
         let primaryMedium = '(none)'
 
-        const nonDirectSession = visitorSessions.find((s: any) =>
-            s.ft_source && s.ft_source.toLowerCase() !== 'direct'
-        )
+        const nonDirectSession = visitorSessions.find((s: any) => {
+            if (s.ft_source && s.ft_source.toLowerCase() !== 'direct') return true
+            // Classify by click IDs even when UTMs are missing
+            if (s.gclid || s.gbraid || s.wbraid) return true
+            if (s.fbclid) return true
+            if (s.ttclid) return true
+            if (s.msclkid) return true
+            return false
+        })
 
         if (nonDirectSession) {
-            primarySource = nonDirectSession.ft_source
-            primaryMedium = nonDirectSession.ft_medium || '(none)'
+            if (nonDirectSession.ft_source && nonDirectSession.ft_source.toLowerCase() !== 'direct') {
+                primarySource = nonDirectSession.ft_source
+                primaryMedium = nonDirectSession.ft_medium || '(none)'
+            } else if (nonDirectSession.gclid || nonDirectSession.gbraid || nonDirectSession.wbraid) {
+                primarySource = 'google'
+                primaryMedium = 'cpc'
+            } else if (nonDirectSession.fbclid) {
+                primarySource = 'facebook'
+                primaryMedium = 'cpc'
+            } else if (nonDirectSession.ttclid) {
+                primarySource = 'tiktok'
+                primaryMedium = 'cpc'
+            } else if (nonDirectSession.msclkid) {
+                primarySource = 'bing'
+                primaryMedium = 'cpc'
+            }
         } else if (visitorSessions[0].ft_source) {
             // Fallback to first session even if it is direct (explicitly set)
             primarySource = visitorSessions[0].ft_source

@@ -12,6 +12,11 @@ const CLIENT_ID = process.env.CLIENT_ID!
 
 export async function POST(request: NextRequest) {
     try {
+        const secret = request.headers.get('x-webhook-secret')
+        if (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET) {
+            return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+        }
+
         const body = await request.json()
 
         // Normalize lead from different sources
@@ -71,12 +76,12 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Calculate days to convert
+        // Calculate days to convert (use lead's own date if provided, not server time)
         let daysToConvert = null
         if (session?.ft_timestamp) {
             const firstTouch = new Date(session.ft_timestamp)
-            const leadDate = new Date()
-            daysToConvert = Math.floor((leadDate.getTime() - firstTouch.getTime()) / 86400000)
+            const leadDate = body.created_at ? new Date(body.created_at) : new Date()
+            daysToConvert = Math.max(0, Math.floor((leadDate.getTime() - firstTouch.getTime()) / 86400000))
         }
 
         // Build attribution data
@@ -246,6 +251,11 @@ export async function POST(request: NextRequest) {
 }
 
 // Normalize leads from different sources
+function safeHostname(url: string | null | undefined): string | null {
+    if (!url) return null
+    try { return new URL(url).hostname } catch { return null }
+}
+
 function normalizeLead(body: any) {
     // Generic form format
     return {
