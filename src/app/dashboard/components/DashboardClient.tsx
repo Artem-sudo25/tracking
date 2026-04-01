@@ -3,16 +3,12 @@
 import { useState, useEffect } from 'react'
 import { DateRange } from '@/types'
 import type { DashboardData } from '@/types'
-import { getDashboardData, getLeadsDashboardData, getPipelineMetrics } from '@/app/actions/dashboard'
+import { getDashboardData, getLeadsDashboardData } from '@/app/actions/dashboard'
 import { getVisitorAnalytics } from '@/app/actions/visitor-analytics'
 import { DateRangePicker } from './DateRangePicker'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Presentation } from 'lucide-react' // Use Presentation as icon for Pipeline
 import Link from 'next/link'
-import { ViewToggle } from './ViewToggle'
 import { StatsCards } from './StatsCards'
 import { LeadsStatsCards } from './LeadsStatsCards'
 import { LeadsBySource } from './LeadsBySource'
@@ -21,6 +17,7 @@ import { RevenueChart } from './RevenueChart'
 import { RecentOrders } from './RecentOrders'
 import { RecentLeads } from './RecentLeads'
 import { VisitorAnalytics } from './VisitorAnalytics'
+import type { LeadsDashboardData, VisitorAnalyticsData } from '@/types/dashboard'
 
 interface DashboardClientProps {
   clientId: string
@@ -31,7 +28,7 @@ type ViewType = 'leads' | 'purchases' | 'combined'
 
 export function DashboardClient({ clientId, initialData }: DashboardClientProps) {
   // Load view preference from localStorage, default to 'combined'
-  const [currentView, setCurrentView] = useState<ViewType>(() => {
+  const [currentView] = useState<ViewType>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('dashboard_view')
       return (saved as ViewType) || 'combined'
@@ -47,16 +44,9 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
   })
 
   const [purchasesData, setPurchasesData] = useState<DashboardData>(initialData)
-  const [leadsData, setLeadsData] = useState<any>(null)
-  const [visitorData, setVisitorData] = useState<any>(null)
-  const [pipelineMetrics, setPipelineMetrics] = useState<any>(null)
-  const [attributionModel, setAttributionModel] = useState('last_touch')
+  const [leadsData, setLeadsData] = useState<LeadsDashboardData | null>(null)
+  const [visitorData, setVisitorData] = useState<VisitorAnalyticsData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-
-  // Save view preference to localStorage
-  useEffect(() => {
-    localStorage.setItem('dashboard_view', currentView)
-  }, [currentView])
 
   const showLeads = currentView === 'leads' || currentView === 'combined'
   const showPurchases = currentView === 'purchases' || currentView === 'combined'
@@ -71,12 +61,11 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
       const end = dateRange.to.toISOString()
 
       // Fetch data in parallel based on current view and attribution model
-      const promises = []
+      const promises: Array<Promise<unknown>> = []
       const resultsOrder = {
         purchases: -1,
         leads: -1,
         visitor: -1,
-        pipeline: -1,
       }
       let nextIndex = 0;
 
@@ -90,24 +79,19 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
         resultsOrder.leads = nextIndex++;
         promises.push(getVisitorAnalytics(clientId, start, end))
         resultsOrder.visitor = nextIndex++;
-        promises.push(getPipelineMetrics(clientId, start, end, attributionModel))
-        resultsOrder.pipeline = nextIndex++;
       }
 
       try {
         const results = await Promise.all(promises)
 
         if (resultsOrder.purchases !== -1) {
-          setPurchasesData(results[resultsOrder.purchases])
+          setPurchasesData(results[resultsOrder.purchases] as DashboardData)
         }
         if (resultsOrder.leads !== -1) {
-          setLeadsData(results[resultsOrder.leads])
+          setLeadsData(results[resultsOrder.leads] as LeadsDashboardData)
         }
         if (resultsOrder.visitor !== -1) {
-          setVisitorData(results[resultsOrder.visitor])
-        }
-        if (resultsOrder.pipeline !== -1) {
-          setPipelineMetrics(results[resultsOrder.pipeline])
+          setVisitorData(results[resultsOrder.visitor] as VisitorAnalyticsData)
         }
 
       } catch (error) {
@@ -118,7 +102,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
     }
 
     fetchData()
-  }, [clientId, dateRange, currentView, showLeads, showPurchases, attributionModel])
+  }, [clientId, dateRange, currentView, showLeads, showPurchases])
 
   return (
     <div className="space-y-8">
@@ -136,19 +120,6 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
               Pipeline
             </Button>
           </Link>
-
-          <Select value={attributionModel} onValueChange={setAttributionModel}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Attribution Model" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="last_touch">Last Touch</SelectItem>
-              <SelectItem value="first_touch">First Touch</SelectItem>
-              <SelectItem value="linear">Linear</SelectItem>
-              <SelectItem value="position_based">Position Based</SelectItem>
-              <SelectItem value="time_decay">Time Decay</SelectItem>
-            </SelectContent>
-          </Select>
 
           <DateRangePicker
             date={dateRange}
@@ -189,7 +160,14 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
             </div>
 
             <div className="grid gap-4 md:grid-cols-1 mt-4">
-              <RecentLeads leads={leadsData.recentLeads} />
+              <RecentLeads
+                key={`${clientId}:${dateRange.from.toISOString()}:${dateRange.to.toISOString()}`}
+                clientId={clientId}
+                leads={leadsData.recentLeads}
+                initialTotal={leadsData.recentLeadsTotal}
+                startDate={dateRange.from.toISOString()}
+                endDate={dateRange.to.toISOString()}
+              />
             </div>
           </div>
         )}

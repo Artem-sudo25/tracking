@@ -32,11 +32,16 @@ export default async function LeadsPage() {
 
     // Fetch metrics
     const metrics = await getPipelineMetrics(client.client_id)
+    const leadsManagerKey = JSON.stringify({
+        totalLeads: leads?.length || 0,
+        statusCounts: metrics.statusCounts,
+        bySource: metrics.bySource.map((source) => `${source.source}:${source.total}:${source.won}:${source.value}`),
+    })
 
     return (
         <div className="space-y-6">
             <h1 className="text-3xl font-bold tracking-tight">Lead Pipeline</h1>
-            <LeadsManager initialLeads={leads || []} metrics={metrics} />
+            <LeadsManager key={leadsManagerKey} initialLeads={leads || []} metrics={metrics} />
         </div>
     )
 }

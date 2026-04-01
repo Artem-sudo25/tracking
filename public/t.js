@@ -31,13 +31,22 @@
         page_title: document.title,
     };
 
-    // Check consent (common CMPs)
+    // Check consent (common CMPs + HaloAgency custom consent)
     var consent = 'unknown';
     if (typeof window.CookieYes !== 'undefined') {
         var cky = window.CookieYes.getConsent();
         consent = cky.analytics ? 'granted' : 'denied';
     } else if (typeof window.Cookiebot !== 'undefined') {
         consent = window.Cookiebot.consent.statistics ? 'granted' : 'denied';
+    } else {
+        // HaloAgency starter / custom consent stored in localStorage
+        try {
+            var haloConsent = localStorage.getItem('halo_cookie_consent');
+            if (haloConsent) {
+                var parsed = JSON.parse(haloConsent);
+                consent = parsed.analytics ? 'granted' : 'denied';
+            }
+        } catch (e) {}
     }
 
     data.consent = consent;

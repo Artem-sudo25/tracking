@@ -1,87 +1,148 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState, useTransition } from 'react'
+import { getLeadListPage } from '@/app/actions/dashboard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatDistanceToNow } from 'date-fns'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Mail, Phone, MessageSquare, Globe, Monitor, MapPin } from 'lucide-react'
-
-interface Lead {
-    lead_id: string
-    name: string
-    email: string
-    phone?: string
-    form_type: string
-    lead_value: number
-    status?: string
-    created_at: string
-    message?: string
-    custom_fields?: any
-    attribution_data?: {
-        first_touch?: {
-            source: string
-            medium: string
-            campaign?: string
-            term?: string
-            content?: string
-            referrer?: string
-            landing?: string
-            timestamp?: string
-        }
-        last_touch?: {
-            source: string
-            medium: string
-            campaign?: string
-            timestamp?: string
-        }
-        device?: {
-            type?: string
-            browser?: string
-            os?: string
-            country?: string
-        }
-    }
-}
+import {
+    ChevronDown,
+    ChevronUp,
+    LoaderCircle,
+    Mail,
+    MessageSquare,
+    Globe,
+    Monitor,
+    MapPin,
+    Phone,
+} from 'lucide-react'
+import type { LeadListItem, LeadListScope } from '@/types/dashboard'
 
 interface RecentLeadsProps {
-    leads: Lead[]
+    clientId: string
+    leads: LeadListItem[]
+    initialTotal: number
+    startDate: string
+    endDate: string
 }
 
-const PAGE_SIZE = 10
+const PAGE_SIZE = 20
 
-export function RecentLeads({ leads }: RecentLeadsProps) {
-    const [currentPage, setCurrentPage] = useState(1)
+export function RecentLeads({
+    clientId,
+    leads,
+    initialTotal,
+    startDate,
+    endDate,
+}: RecentLeadsProps) {
+    const [scope, setScope] = useState<LeadListScope>('period')
+    const [leadPages, setLeadPages] = useState<Record<LeadListScope, { leads: LeadListItem[]; total: number }>>({
+        period: { leads, total: initialTotal },
+        all_time: { leads: [], total: 0 },
+    })
     const [expandedLeads, setExpandedLeads] = useState<Set<string>>(new Set())
     const [isCardExpanded, setIsCardExpanded] = useState(true)
-
-    const totalPages = Math.ceil(leads.length / PAGE_SIZE)
-    const startIndex = (currentPage - 1) * PAGE_SIZE
-    const endIndex = startIndex + PAGE_SIZE
-    const currentLeads = leads.slice(startIndex, endIndex)
+    const [loadError, setLoadError] = useState<string | null>(null)
+    const [isPending, startTransition] = useTransition()
+    const latestRequestId = useRef(0)
+    const visibleLeads = leadPages[scope].leads
+    const totalLeads = leadPages[scope].total
+    const hasMore = visibleLeads.length < totalLeads
+    const scopeLabel = scope === 'all_time' ? 'all time' : 'selected period'
 
     const toggleExpand = (leadId: string) => {
-        setExpandedLeads(prev => {
-            const newSet = new Set(prev)
-            if (newSet.has(leadId)) {
-                newSet.delete(leadId)
+        setExpandedLeads((prev) => {
+            const next = new Set(prev)
+            if (next.has(leadId)) {
+                next.delete(leadId)
             } else {
-                newSet.add(leadId)
+                next.add(leadId)
             }
-            return newSet
+            return next
         })
     }
 
-    // ... existing helpers ...
+    const fetchLeadPage = (nextScope: LeadListScope, offset: number) => {
+        const requestId = ++latestRequestId.current
 
-    // Copy helper functions here to avoid removing them
-    const getStatusColor = (status?: string) => {
+        startTransition(() => {
+            void (async () => {
+                try {
+                    const page = await getLeadListPage(
+                        clientId,
+                        nextScope,
+                        startDate,
+                        endDate,
+                        PAGE_SIZE,
+                        offset
+                    )
+
+                    if (requestId !== latestRequestId.current) {
+                        return
+                    }
+
+                    setLeadPages((prev) => ({
+                        ...prev,
+                        [nextScope]: {
+                            leads: offset === 0 ? page.leads : [...prev[nextScope].leads, ...page.leads],
+                            total: page.total,
+                        },
+                    }))
+
+                    if (offset === 0) {
+                        setExpandedLeads(new Set())
+                    }
+
+                    setLoadError(null)
+                } catch (error) {
+                    console.error('Failed to load leads:', error)
+                    setLoadError('Could not load more leads.')
+                }
+            })()
+        })
+    }
+
+    const handleScopeChange = (nextScope: LeadListScope) => {
+        if (nextScope === scope) {
+            return
+        }
+
+        setScope(nextScope)
+
+        if (nextScope === 'period') {
+            latestRequestId.current += 1
+            setExpandedLeads(new Set())
+            setLoadError(null)
+            return
+        }
+
+        if (leadPages.all_time.leads.length > 0) {
+            setExpandedLeads(new Set())
+            setLoadError(null)
+            return
+        }
+
+        fetchLeadPage(nextScope, 0)
+    }
+
+    const handleLoadMore = () => {
+        if (!hasMore || isPending) {
+            return
+        }
+
+        fetchLeadPage(scope, visibleLeads.length)
+    }
+
+    const getStatusColor = (status?: string | null) => {
         switch (status) {
             case 'new':
                 return 'bg-orange-100 text-orange-800 border-orange-200'
             case 'contacted':
                 return 'bg-blue-100 text-blue-800 border-blue-200'
-            case 'converted':
+            case 'qualified':
+                return 'bg-purple-100 text-purple-800 border-purple-200'
+            case 'won':
                 return 'bg-green-100 text-green-800 border-green-200'
             case 'lost':
                 return 'bg-gray-100 text-gray-800 border-gray-200'
@@ -90,93 +151,95 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
         }
     }
 
-    const getFormTypeLabel = (formType: string) => {
+    const getFormTypeLabel = (formType?: string | null) => {
         const labels: Record<string, string> = {
-            'contact': 'Contact',
-            'demo': 'Demo',
+            contact: 'Contact',
+            demo: 'Demo',
             'free-trial': 'Free Trial',
-            'quote': 'Quote'
+            quote: 'Quote',
         }
+
+        if (!formType) {
+            return 'General Form'
+        }
+
         return labels[formType] || formType
     }
 
     return (
         <Card>
             <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setIsCardExpanded(!isCardExpanded)}>
-                <div className="flex items-center justify-between">
-                    <div>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <CardTitle>Recent Leads</CardTitle>
+                            <CardTitle>Leads</CardTitle>
                             {isCardExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            {isPending && <LoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" />}
                         </div>
                         {isCardExpanded && (
                             <CardDescription>
-                                Showing {startIndex + 1}-{Math.min(endIndex, leads.length)} of {leads.length} leads
+                                Showing {visibleLeads.length} of {totalLeads} leads in {scopeLabel}
                             </CardDescription>
                         )}
                     </div>
-                    {isCardExpanded && totalPages > 1 && (
-                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+
+                    {isCardExpanded && (
+                        <div className="flex flex-wrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
                             <Button
-                                variant="outline"
+                                variant={scope === 'period' ? 'default' : 'outline'}
                                 size="sm"
-                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                disabled={currentPage === 1}
+                                onClick={() => handleScopeChange('period')}
+                                disabled={isPending}
                             >
-                                <ChevronLeft className="h-4 w-4" />
+                                Selected Period
                             </Button>
-                            <span className="text-sm text-muted-foreground">
-                                Page {currentPage} of {totalPages}
-                            </span>
                             <Button
-                                variant="outline"
+                                variant={scope === 'all_time' ? 'default' : 'outline'}
                                 size="sm"
-                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                disabled={currentPage === totalPages}
+                                onClick={() => handleScopeChange('all_time')}
+                                disabled={isPending}
                             >
-                                <ChevronRight className="h-4 w-4" />
+                                All Time
                             </Button>
                         </div>
                     )}
                 </div>
             </CardHeader>
+
             {isCardExpanded && (
                 <CardContent>
                     <div className="space-y-4">
-                        {currentLeads.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-8">
-                                No leads yet
+                        {visibleLeads.length === 0 ? (
+                            <p className="py-8 text-center text-sm text-muted-foreground">
+                                No leads in this scope yet
                             </p>
                         ) : (
-                            currentLeads.map((lead) => {
-                                const isExpanded = expandedLeads.has(lead.lead_id)
+                            visibleLeads.map((lead) => {
+                                const isExpanded = expandedLeads.has(lead.id)
 
                                 return (
                                     <div
-                                        key={lead.lead_id}
-                                        className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-                                        data-lead-id={lead.lead_id}
-                                        onClick={() => console.log('Clicked lead:', lead.lead_id)}
+                                        key={lead.id}
+                                        className="rounded-lg border p-4 transition-colors hover:bg-muted/50"
                                     >
-                                        {/* Collapsed View */}
-                                        <div className="flex items-start justify-between">
-                                            <div className="space-y-1 flex-1">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0 flex-1 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <p className="text-sm font-medium leading-none">
-                                                        {lead.name}
+                                                        {lead.name || 'Unknown'}
                                                     </p>
                                                     <Badge variant="outline" className={getStatusColor(lead.status)}>
                                                         {lead.status || 'new'}
                                                     </Badge>
                                                 </div>
-                                                <p className="text-sm text-muted-foreground">
-                                                    {lead.email}
+                                                <p className="truncate text-sm text-muted-foreground">
+                                                    {lead.email || 'No email'}
                                                 </p>
-                                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                                     <span>{getFormTypeLabel(lead.form_type)}</span>
                                                     <span>•</span>
                                                     <span>{formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}</span>
-                                                    {lead.attribution_data?.first_touch && (
+                                                    {lead.attribution_data?.first_touch?.source && (
                                                         <>
                                                             <span>•</span>
                                                             <span>{lead.attribution_data.first_touch.source}</span>
@@ -184,15 +247,20 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
                                                     )}
                                                 </div>
                                             </div>
+
                                             <div className="flex items-center gap-2">
                                                 <p className="text-sm font-medium">
-                                                    {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(lead.lead_value)}
+                                                    {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(lead.lead_value || 0)}
                                                 </p>
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    onClick={() => toggleExpand(lead.lead_id)}
+                                                    onClick={(event) => {
+                                                        event.stopPropagation()
+                                                        toggleExpand(lead.id)
+                                                    }}
                                                     className="h-8 w-8 p-0"
+                                                    aria-label={isExpanded ? 'Collapse lead details' : 'Expand lead details'}
                                                 >
                                                     {isExpanded ? (
                                                         <ChevronUp className="h-4 w-4" />
@@ -203,21 +271,19 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
                                             </div>
                                         </div>
 
-                                        {/* Expanded View */}
                                         {isExpanded && (
-                                            <div className="mt-4 pt-4 border-t space-y-3 animate-in slide-in-from-top-2">
-                                                {/* Contact Info */}
-                                                <div className="grid grid-cols-2 gap-3">
+                                            <div className="mt-4 space-y-3 border-t pt-4 animate-in slide-in-from-top-2">
+                                                <div className="grid gap-3 md:grid-cols-2">
                                                     <div className="flex items-start gap-2">
-                                                        <Mail className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                        <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" />
                                                         <div>
                                                             <p className="text-xs text-muted-foreground">Email</p>
-                                                            <p className="text-sm">{lead.email}</p>
+                                                            <p className="text-sm">{lead.email || 'No email'}</p>
                                                         </div>
                                                     </div>
                                                     {lead.phone && (
                                                         <div className="flex items-start gap-2">
-                                                            <Phone className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                            <Phone className="mt-0.5 h-4 w-4 text-muted-foreground" />
                                                             <div>
                                                                 <p className="text-xs text-muted-foreground">Phone</p>
                                                                 <p className="text-sm">{lead.phone}</p>
@@ -226,10 +292,9 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
                                                     )}
                                                 </div>
 
-                                                {/* Message */}
                                                 {lead.message && (
                                                     <div className="flex items-start gap-2">
-                                                        <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                                        <MessageSquare className="mt-0.5 h-4 w-4 text-muted-foreground" />
                                                         <div className="flex-1">
                                                             <p className="text-xs text-muted-foreground">Message</p>
                                                             <p className="text-sm">{lead.message}</p>
@@ -237,11 +302,10 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
                                                     </div>
                                                 )}
 
-                                                {/* Attribution */}
                                                 {lead.attribution_data?.first_touch && (
                                                     <div className="space-y-2">
                                                         <p className="text-xs font-medium text-muted-foreground">Attribution</p>
-                                                        <div className="grid grid-cols-2 gap-2 text-xs">
+                                                        <div className="grid gap-2 text-xs md:grid-cols-2">
                                                             <div>
                                                                 <span className="text-muted-foreground">First Touch: </span>
                                                                 <span className="font-medium">
@@ -263,9 +327,8 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
                                                     </div>
                                                 )}
 
-                                                {/* Device Info */}
                                                 {lead.attribution_data?.device && (
-                                                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                                    <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                                                         {lead.attribution_data.device.type && (
                                                             <div className="flex items-center gap-1">
                                                                 <Monitor className="h-3 w-3" />
@@ -287,14 +350,13 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
                                                     </div>
                                                 )}
 
-                                                {/* Custom Fields */}
                                                 {lead.custom_fields && Object.keys(lead.custom_fields).length > 0 && (
                                                     <div>
-                                                        <p className="text-xs font-medium text-muted-foreground mb-1">Custom Fields</p>
-                                                        <div className="grid grid-cols-2 gap-2 text-xs">
+                                                        <p className="mb-1 text-xs font-medium text-muted-foreground">Custom Fields</p>
+                                                        <div className="grid gap-2 text-xs md:grid-cols-2">
                                                             {Object.entries(lead.custom_fields).map(([key, value]) => (
                                                                 <div key={key}>
-                                                                    <span className="text-muted-foreground capitalize">{key}: </span>
+                                                                    <span className="capitalize text-muted-foreground">{key}: </span>
                                                                     <span className="font-medium">{String(value)}</span>
                                                                 </div>
                                                             ))}
@@ -306,6 +368,18 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
                                     </div>
                                 )
                             })
+                        )}
+
+                        {loadError && (
+                            <p className="text-sm text-red-600">{loadError}</p>
+                        )}
+
+                        {hasMore && (
+                            <div className="flex justify-center pt-2">
+                                <Button variant="outline" onClick={handleLoadMore} disabled={isPending}>
+                                    {isPending ? 'Loading...' : `Load ${Math.min(PAGE_SIZE, totalLeads - visibleLeads.length)} More`}
+                                </Button>
+                            </div>
                         )}
                     </div>
                 </CardContent>

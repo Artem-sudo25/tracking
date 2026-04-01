@@ -1,10 +1,34 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { differenceInDays, differenceInHours, format } from 'date-fns'
 import type { DashboardData } from '@/types'
+import type {
+    LeadAttributionData,
+    LeadListItem,
+    LeadListPage,
+    LeadListScope,
+    LeadsDashboardData,
+    PipelineMetricsData,
+} from '@/types/dashboard'
+
+const DEFAULT_LEADS_PAGE_SIZE = 20
+const leadListSelect = 'id, name, email, phone, form_type, lead_value, status, created_at, message, custom_fields, attribution_data'
+
+interface TouchpointRow {
+    session_id: string
+    source: string | null
+    medium: string | null
+}
+
+interface PipelineLeadRow {
+    status: string | null
+    source: string | null
+    deal_value: number | null
+    attribution_data: LeadAttributionData | null
+    session_id: string | null
+}
 
 // Helper function to determine time label
 function getTimeLabel(startDate: string, endDate: string): string {
@@ -144,30 +168,19 @@ export async function getLeadsDashboardData(
     clientId: string,
     startDate?: string,
     endDate?: string
-): Promise<any> {
+): Promise<LeadsDashboardData> {
     const supabase = await createClient()
 
     // Use provided dates or default to last 30 days
     const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
     const end = endDate || new Date().toISOString()
 
-    // Calculate dynamic time label based on date range
-    const startDateObj = new Date(start)
-    const endDateObj = new Date(end)
-    const daysDiff = differenceInDays(endDateObj, startDateObj)
-    const hoursDiff = differenceInHours(endDateObj, startDateObj)
-
-    let timeLabel = 'in Period'
-    if (hoursDiff < 24) timeLabel = 'Today'
-    else if (daysDiff === 1) timeLabel = 'Yesterday'
-    else if (daysDiff <= 7) timeLabel = 'This Week'
-    else if (daysDiff <= 30) timeLabel = 'This Month'
-    else if (daysDiff <= 90) timeLabel = 'This Quarter'
+    const timeLabel = getTimeLabel(start, end)
 
     // 1. Fetch all leads
     const { data: leads } = await supabase
         .from('leads')
-        .select('*')
+        .select('id, created_at, form_type, lead_value, status, attribution_data')
         .eq('client_id', clientId)
         .gte('created_at', start)
         .lte('created_at', end)
@@ -175,19 +188,7 @@ export async function getLeadsDashboardData(
 
     const totalLeads = leads?.length || 0
 
-    // 2. Fetch purchases to calculate conversion rate
-    const { data: purchases } = await supabase
-        .from('purchases')
-        .select('lead_id')
-        .eq('client_id', clientId)
-        .gte('created_at', start)
-        .lte('created_at', end)
-        .not('lead_id', 'is', null)
-
-    const convertedLeads = new Set(purchases?.map(p => p.lead_id) || [])
-    const conversionRate = totalLeads > 0 ? convertedLeads.size / totalLeads : 0
-
-    // 3. Cost per lead (CPL)
+    // 2. Cost per lead (CPL)
     // Get ad spend for the period
     const { data: adSpendData } = await supabase
         .from('ad_spend')
@@ -199,7 +200,7 @@ export async function getLeadsDashboardData(
     const totalSpend = adSpendData?.reduce((sum, s) => sum + (s.spend || 0), 0) || 0
     const costPerLead = totalLeads > 0 ? totalSpend / totalLeads : 0
 
-    // 4. Leads by form type
+    // 3. Leads by form type
     const formTypeMap = new Map()
     leads?.forEach(l => {
         const formType = l.form_type || 'unknown'
@@ -214,7 +215,7 @@ export async function getLeadsDashboardData(
     const leadsByFormType = Array.from(formTypeMap.values())
         .sort((a, b) => b.count - a.count)
 
-    // 5. Leads by source (first touch) - include ALL leads
+    // 4. Leads by source (first touch) - include ALL leads
     const sourceMap = new Map()
     leads?.forEach(l => {
         // Handle leads with and without attribution data
@@ -240,7 +241,7 @@ export async function getLeadsDashboardData(
     const leadsBySource = Array.from(sourceMap.values())
         .sort((a, b) => b.count - a.count)
 
-    // 6. Get ad spend for this period and calculate lead-gen ROI
+    // 5. Get ad spend for this period and calculate lead-gen ROI
     const { data: adSpend } = await supabase
         .from('ad_spend')
         .select('source, medium, spend')
@@ -277,7 +278,7 @@ export async function getLeadsDashboardData(
         }
     })
 
-    // 7. Leads over time (daily)
+    // 6. Leads over time (daily)
     const dailyMap = new Map()
     leads?.forEach(l => {
         const date = format(new Date(l.created_at), 'MMM dd')
@@ -290,11 +291,11 @@ export async function getLeadsDashboardData(
     const dailyLeads = Array.from(dailyMap.entries())
         .map(([date, count]) => ({ date, leads: count }))
 
-    // 8. Top lead source
+    // 7. Top lead source
     const topSource = leadsWithROI[0] || { source: 'N/A', medium: 'N/A', count: 0 }
     const topSourceText = `${topSource.source}/${topSource.medium}`
 
-    // 9. New leads count - leads created after last view
+    // 8. New leads count - leads created after last view
     // Get last view timestamp for this user
     const { data: { user } } = await supabase.auth.getUser()
     let newLeadsCount = 0
@@ -321,6 +322,15 @@ export async function getLeadsDashboardData(
         newLeadsCount = leads?.filter(l => l.status === 'new' || !l.status).length || 0
     }
 
+    const { data: recentLeads } = await supabase
+        .from('leads')
+        .select(leadListSelect)
+        .eq('client_id', clientId)
+        .gte('created_at', start)
+        .lte('created_at', end)
+        .order('created_at', { ascending: false })
+        .range(0, DEFAULT_LEADS_PAGE_SIZE - 1)
+
     return {
         stats: {
             totalLeads,
@@ -332,8 +342,60 @@ export async function getLeadsDashboardData(
         },
         leadsByFormType,
         leadsBySource: leadsWithROI,
-        recentLeads: leads?.slice(0, 5) || [],
+        recentLeads: (recentLeads || []) as LeadListItem[],
+        recentLeadsTotal: totalLeads,
         chartData: dailyLeads,
+    }
+}
+
+export async function getLeadListPage(
+    clientId: string,
+    scope: LeadListScope = 'period',
+    startDate?: string,
+    endDate?: string,
+    limit: number = DEFAULT_LEADS_PAGE_SIZE,
+    offset: number = 0
+): Promise<LeadListPage> {
+    const supabase = await createClient()
+
+    const safeLimit = Math.max(1, Math.min(limit, 100))
+    const safeOffset = Math.max(0, offset)
+    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const end = endDate || new Date().toISOString()
+
+    let query = supabase
+        .from('leads')
+        .select(leadListSelect, { count: 'exact' })
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false })
+        .range(safeOffset, safeOffset + safeLimit - 1)
+
+    if (scope === 'period') {
+        query = query
+            .gte('created_at', start)
+            .lte('created_at', end)
+    }
+
+    const { data, count, error } = await query
+
+    if (error) {
+        console.error('Error fetching lead list page:', error)
+        return {
+            leads: [],
+            total: 0,
+            hasMore: false,
+            scope,
+        }
+    }
+
+    const total = count || 0
+    const leads = (data || []) as LeadListItem[]
+
+    return {
+        leads,
+        total,
+        hasMore: safeOffset + leads.length < total,
+        scope,
     }
 }
 
@@ -344,7 +406,11 @@ export async function updateLeadStatus(
 ) {
     const supabase = await createClient()
 
-    const updates: any = {
+    const updates: {
+        status: string
+        status_updated_at: string
+        deal_value?: number
+    } = {
         status,
         status_updated_at: new Date().toISOString()
     }
@@ -373,7 +439,7 @@ export async function getPipelineMetrics(
     startDate?: string,
     endDate?: string,
     attributionModel: string = 'last_touch'
-) {
+): Promise<PipelineMetricsData> {
     const supabase = await createClient()
 
     // Default to last 30 days if no dates provided
@@ -404,7 +470,7 @@ export async function getPipelineMetrics(
     const winRate = total > 0 ? (won / total) * 100 : 0
 
     // FETCH TOUCHPOINTS for these leads if model is not Single Touch
-    let leadTouchpointsMap = new Map<string, any[]>()
+    const leadTouchpointsMap = new Map<string, TouchpointRow[]>()
 
     if (['linear', 'time_decay', 'position_based', 'u_shaped'].includes(attributionModel)) {
         const sessionIds = leads?.map(l => l.session_id).filter(Boolean) || []
@@ -416,7 +482,7 @@ export async function getPipelineMetrics(
                 .in('session_id', sessionIds)
                 .order('timestamp', { ascending: true })
 
-            touches?.forEach(t => {
+            touches?.forEach((t) => {
                 // Group by session (Visitor)
                 // Note: Leads link to session_id (Visitor).
                 if (!leadTouchpointsMap.has(t.session_id)) {
@@ -428,10 +494,10 @@ export async function getPipelineMetrics(
     }
 
     // HELPER: Distribute Credit
-    const distributeCredit = (lead: any, model: string): Record<string, number> => {
-        const touches = leadTouchpointsMap.get(lead.session_id) || []
+    const distributeCredit = (lead: PipelineLeadRow, model: string): Record<string, number> => {
+        const touches = lead.session_id ? (leadTouchpointsMap.get(lead.session_id) || []) : []
         // Filter valid marketing touches
-        const marketingTouches = touches.filter(t => t.source && t.source !== 'direct' && t.medium !== '(none)')
+        const marketingTouches = touches.filter((t) => t.source && t.source !== 'direct' && t.medium !== '(none)')
 
         const credit: Record<string, number> = {}
 
