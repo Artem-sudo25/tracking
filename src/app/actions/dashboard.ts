@@ -1,5 +1,6 @@
 'use server'
 
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { differenceInDays, differenceInHours, format } from 'date-fns'
@@ -406,6 +407,34 @@ export async function updateLeadStatus(
 ) {
     const supabase = await createClient()
 
+    const {
+        data: { user },
+        error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+        return { success: false, error: 'Not authenticated' }
+    }
+
+    const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('client_id')
+        .eq('user_id', user.id)
+        .single()
+
+    if (clientError || !client) {
+        return { success: false, error: 'Client not found' }
+    }
+
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_KEY
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+
+    if (!serviceRoleKey || !supabaseUrl) {
+        return { success: false, error: 'Missing Supabase server configuration' }
+    }
+
+    const adminClient = createSupabaseClient(supabaseUrl, serviceRoleKey)
+
     const updates: {
         status: string
         status_updated_at: string
@@ -419,14 +448,21 @@ export async function updateLeadStatus(
         updates.deal_value = dealValue
     }
 
-    const { error } = await supabase
+    const { data, error } = await adminClient
         .from('leads')
         .update(updates)
+        .eq('client_id', client.client_id)
         .eq('id', leadId)
+        .select('id')
+        .maybeSingle()
 
     if (error) {
         console.error('Error updating lead status:', error)
         return { success: false, error: error.message }
+    }
+
+    if (!data) {
+        return { success: false, error: 'Lead not found or update not permitted' }
     }
 
     revalidatePath('/dashboard')

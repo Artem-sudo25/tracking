@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { endOfDay, startOfDay } from 'date-fns'
 import { DateRange } from '@/types'
 import type { DashboardData } from '@/types'
 import { getDashboardData, getLeadsDashboardData } from '@/app/actions/dashboard'
@@ -57,8 +58,8 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
       if (!dateRange.from || !dateRange.to) return
 
       setIsLoading(true)
-      const start = dateRange.from.toISOString()
-      const end = dateRange.to.toISOString()
+      const start = startOfDay(dateRange.from).toISOString()
+      const end = endOfDay(dateRange.to).toISOString()
 
       // Fetch data in parallel based on current view and attribution model
       const promises: Array<Promise<unknown>> = []
@@ -165,8 +166,8 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
                 clientId={clientId}
                 leads={leadsData.recentLeads}
                 initialTotal={leadsData.recentLeadsTotal}
-                startDate={dateRange.from.toISOString()}
-                endDate={dateRange.to.toISOString()}
+                startDate={startOfDay(dateRange.from).toISOString()}
+                endDate={endOfDay(dateRange.to).toISOString()}
               />
             </div>
           </div>

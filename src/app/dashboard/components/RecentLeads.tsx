@@ -5,7 +5,7 @@ import { getLeadListPage } from '@/app/actions/dashboard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { formatDistanceToNow } from 'date-fns'
+import { format, formatDistanceToNow } from 'date-fns'
 import {
     ChevronDown,
     ChevronUp,
@@ -50,6 +50,7 @@ export function RecentLeads({
     const totalLeads = leadPages[scope].total
     const hasMore = visibleLeads.length < totalLeads
     const scopeLabel = scope === 'all_time' ? 'all time' : 'selected period'
+    const periodLabel = `${format(new Date(startDate), 'LLL dd, y')} - ${format(new Date(endDate), 'LLL dd, y')}`
 
     const toggleExpand = (leadId: string) => {
         setExpandedLeads((prev) => {
@@ -111,9 +112,7 @@ export function RecentLeads({
         setScope(nextScope)
 
         if (nextScope === 'period') {
-            latestRequestId.current += 1
-            setExpandedLeads(new Set())
-            setLoadError(null)
+            fetchLeadPage('period', 0)
             return
         }
 
@@ -179,6 +178,7 @@ export function RecentLeads({
                         {isCardExpanded && (
                             <CardDescription>
                                 Showing {visibleLeads.length} of {totalLeads} leads in {scopeLabel}
+                                {scope === 'period' ? ` (${periodLabel})` : ''}
                             </CardDescription>
                         )}
                     </div>
