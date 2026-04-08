@@ -12,6 +12,14 @@ export interface LeadTouchData {
   timestamp?: string | null
 }
 
+export interface LeadClickIds {
+  gclid?: string | null
+  fbclid?: string | null
+  fbc?: string | null
+  fbp?: string | null
+  ttclid?: string | null
+}
+
 export interface LeadDeviceData {
   type?: string | null
   browser?: string | null
@@ -20,9 +28,13 @@ export interface LeadDeviceData {
 }
 
 export interface LeadAttributionData {
+  session_id?: string | null
   first_touch?: LeadTouchData | null
   last_touch?: LeadTouchData | null
+  click_ids?: LeadClickIds | null
+  url_params?: Record<string, string> | null
   device?: LeadDeviceData | null
+  match_type?: string | null
 }
 
 export interface LeadListItem {

@@ -22,6 +22,7 @@
         utm_campaign: params.get('utm_campaign'),
         utm_term: params.get('utm_term'),
         utm_content: params.get('utm_content'),
+        custom_params: Object.fromEntries(params.entries()),
         gclid: params.get('gclid'),
         fbclid: params.get('fbclid'),
         ttclid: params.get('ttclid'),
@@ -46,7 +47,7 @@
                 var parsed = JSON.parse(haloConsent);
                 consent = parsed.analytics ? 'granted' : 'denied';
             }
-        } catch (e) {}
+        } catch {}
     }
 
     data.consent = consent;

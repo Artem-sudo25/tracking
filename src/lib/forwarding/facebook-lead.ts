@@ -1,8 +1,28 @@
 // lib/forwarding/facebook-lead.ts
 
+interface FacebookLeadSession {
+    country?: string | null
+    city?: string | null
+    lt_landing?: string | null
+    ft_landing?: string | null
+    fbc?: string | null
+    fbp?: string | null
+    user_agent?: string | null
+}
+
+interface FacebookLeadRecord {
+    email?: string | null
+    phone?: string | null
+    name?: string | null
+    value?: number | null
+    currency?: string | null
+    form_type?: string | null
+    ip_address?: string | null
+}
+
 interface FacebookLeadParams {
-    session: any
-    lead: any
+    session: FacebookLeadSession
+    lead: FacebookLeadRecord
     eventId: string
     pixelId: string
     accessToken: string
@@ -13,10 +33,14 @@ export async function sendLeadToFacebook(params: FacebookLeadParams) {
     const { session, lead, eventId, pixelId, accessToken, testEventCode } = params
 
     try {
+        const normalizedName = lead.name?.toLowerCase().trim() || ''
+        const [firstName, ...lastNameParts] = normalizedName ? normalizedName.split(/\s+/) : []
+
         // Hash user data (Facebook requires SHA256)
         const hashedEmail = lead.email ? await sha256(lead.email.toLowerCase().trim()) : null
         const hashedPhone = lead.phone ? await sha256(normalizePhone(lead.phone)) : null
-        const hashedName = lead.name ? await sha256(lead.name.toLowerCase().trim()) : null
+        const hashedFirstName = firstName ? await sha256(firstName) : null
+        const hashedLastName = lastNameParts.length > 0 ? await sha256(lastNameParts.join(' ')) : null
         const hashedCountry = session.country ? await sha256(session.country.toLowerCase()) : null
         const hashedCity = session.city ? await sha256(session.city.toLowerCase().replace(/\s/g, '')) : null
 
@@ -31,11 +55,11 @@ export async function sendLeadToFacebook(params: FacebookLeadParams) {
                 user_data: {
                     em: hashedEmail ? [hashedEmail] : undefined,
                     ph: hashedPhone ? [hashedPhone] : undefined,
-                    fn: hashedName ? [hashedName.split(' ')[0]] : undefined,
-                    ln: hashedName ? [hashedName.split(' ').slice(1).join(' ')] : undefined,
+                    fn: hashedFirstName ? [hashedFirstName] : undefined,
+                    ln: hashedLastName ? [hashedLastName] : undefined,
                     fbc: session.fbc || undefined,
                     fbp: session.fbp || undefined,
-                    client_ip_address: session.ip_hash || undefined,
+                    client_ip_address: lead.ip_address || undefined,
                     client_user_agent: session.user_agent || undefined,
                     country: hashedCountry ? [hashedCountry] : undefined,
                     ct: hashedCity ? [hashedCity] : undefined,

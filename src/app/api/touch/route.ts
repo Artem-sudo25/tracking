@@ -10,6 +10,25 @@ const supabase = createClient(
 
 const CLIENT_ID = process.env.CLIENT_ID!
 
+interface SessionTouchUpdate {
+    lt_source: string | null
+    lt_medium: string | null
+    lt_campaign: string | null
+    lt_term: string | null
+    lt_content: string | null
+    lt_referrer: string | null
+    lt_landing: string | null
+    lt_timestamp: string
+    updated_at: string
+    gclid?: string | null
+    fbclid?: string | null
+    fbc?: string | null
+    fbp?: string | null
+    ttclid?: string | null
+    msclkid?: string | null
+    custom_params?: Record<string, string>
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
@@ -23,6 +42,11 @@ export async function POST(request: NextRequest) {
         }
 
         const consentStatus = body.consent || 'unknown'
+        const existingFbc = request.cookies.get('_fbc')?.value || null
+        const existingFbp = request.cookies.get('_fbp')?.value || null
+        const fbc = buildFacebookClickCookie(existingFbc, body.fbclid)
+        const fbp = buildFacebookBrowserCookie(existingFbp)
+        const customParams = extractCustomParams(body.custom_params, body.landing)
 
         // === CONSENT DENIED ===
         if (consentStatus === 'denied') {
@@ -121,6 +145,8 @@ export async function POST(request: NextRequest) {
 
                 gclid: body.gclid,
                 fbclid: body.fbclid,
+                fbc,
+                fbp,
                 ttclid: body.ttclid,
                 msclkid: body.msclkid,
 
@@ -137,10 +163,11 @@ export async function POST(request: NextRequest) {
                 // For now we skip geo if not available.
 
                 language: request.headers.get('accept-language')?.split(',')[0] || 'unknown',
+                custom_params: customParams,
             })
         } else if (hasTouchData) {
             // Update existing session
-            const updateData: any = {
+            const updateData: SessionTouchUpdate = {
                 lt_source: touch.source,
                 lt_medium: touch.medium,
                 lt_campaign: touch.campaign,
@@ -154,8 +181,11 @@ export async function POST(request: NextRequest) {
 
             if (body.gclid) updateData.gclid = body.gclid
             if (body.fbclid) updateData.fbclid = body.fbclid
+            if (fbc) updateData.fbc = fbc
+            if (fbp) updateData.fbp = fbp
             if (body.ttclid) updateData.ttclid = body.ttclid
             if (body.msclkid) updateData.msclkid = body.msclkid
+            if (Object.keys(customParams).length > 0) updateData.custom_params = customParams
 
             await supabase.from('sessions')
                 .update(updateData)
@@ -199,8 +229,6 @@ export async function POST(request: NextRequest) {
 
         // === FORWARD TO FACEBOOK (SERVER-SIDE PAGEVIEW) ===
         if (consentStatus === 'granted') {
-            const fbc = request.cookies.get('_fbc')?.value
-            const fbp = request.cookies.get('_fbp')?.value
             const country = request.headers.get('x-vercel-ip-country')
             const city = request.headers.get('x-vercel-ip-city')
 
@@ -258,6 +286,26 @@ export async function POST(request: NextRequest) {
             path: '/',
             sameSite: 'lax',
         })
+
+        if (fbc) {
+            response.cookies.set('_fbc', fbc, {
+                httpOnly: false,
+                secure: process.env.NODE_ENV === 'production',
+                maxAge: 7776000,
+                path: '/',
+                sameSite: 'lax',
+            })
+        }
+
+        if (fbp) {
+            response.cookies.set('_fbp', fbp, {
+                httpOnly: false,
+                secure: process.env.NODE_ENV === 'production',
+                maxAge: 7776000,
+                path: '/',
+                sameSite: 'lax',
+            })
+        }
 
         return response
 
@@ -318,4 +366,42 @@ function parseUserAgent(ua: string) {
     }
 
     return { type, browser, browserVersion, os, osVersion }
+}
+
+function buildFacebookClickCookie(existingFbc: string | null, fbclid: string | null | undefined) {
+    if (!fbclid) {
+        return existingFbc
+    }
+
+    return `fb.1.${Math.floor(Date.now() / 1000)}.${fbclid}`
+}
+
+function buildFacebookBrowserCookie(existingFbp: string | null) {
+    if (existingFbp) {
+        return existingFbp
+    }
+
+    return `fb.1.${Math.floor(Date.now() / 1000)}.${Math.floor(Math.random() * 10_000_000_000)}`
+}
+
+function extractCustomParams(input: unknown, landing: string | null | undefined) {
+    if (input && typeof input === 'object' && !Array.isArray(input)) {
+        return Object.fromEntries(
+            Object.entries(input).map(([key, value]) => [key, value == null ? '' : String(value)])
+        )
+    }
+
+    if (!landing || !landing.includes('?')) {
+        return {}
+    }
+
+    try {
+        const search = landing.includes('://')
+            ? new URL(landing).search
+            : `?${landing.split('?')[1] || ''}`
+
+        return Object.fromEntries(new URLSearchParams(search).entries())
+    } catch {
+        return {}
+    }
 }

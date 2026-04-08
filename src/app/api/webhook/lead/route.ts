@@ -10,6 +10,31 @@ const supabase = createClient(
 
 const CLIENT_ID = process.env.CLIENT_ID!
 
+interface LeadWebhookBody {
+    lead_id?: string
+    id?: string
+    source?: string
+    email?: string
+    phone?: string
+    name?: string
+    first_name?: string
+    last_name?: string
+    company?: string
+    form_type?: string
+    message?: string
+    comments?: string
+    value?: number | string
+    lead_value?: number | string
+    currency?: string
+    custom_fields?: Record<string, unknown>
+    session_id?: string
+    halo_session_id?: string
+    consent_given?: boolean
+    gdpr_consent?: boolean
+    ip_address?: string
+    created_at?: string
+}
+
 export async function POST(request: NextRequest) {
     try {
         const secret = request.headers.get('x-webhook-secret')
@@ -17,10 +42,13 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
         }
 
-        const body = await request.json()
+        const body = await request.json() as LeadWebhookBody
 
         // Normalize lead from different sources
         const lead = normalizeLead(body)
+        if (!lead.ip_address) {
+            lead.ip_address = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null
+        }
 
         // === ATTRIBUTION MATCHING ===
         let session = null
@@ -114,6 +142,7 @@ export async function POST(request: NextRequest) {
                 fbp: session.fbp,
                 ttclid: session.ttclid,
             },
+            url_params: session.custom_params || {},
             device: {
                 type: session.device_type,
                 browser: session.browser,
@@ -251,12 +280,9 @@ export async function POST(request: NextRequest) {
 }
 
 // Normalize leads from different sources
-function safeHostname(url: string | null | undefined): string | null {
-    if (!url) return null
-    try { return new URL(url).hostname } catch { return null }
-}
+function normalizeLead(body: LeadWebhookBody) {
+    const rawValue = body.value ?? body.lead_value ?? 0
 
-function normalizeLead(body: any) {
     // Generic form format
     return {
         external_id: body.lead_id || body.id || `lead_${Date.now()}`,
@@ -267,7 +293,7 @@ function normalizeLead(body: any) {
         company: body.company || null,
         form_type: body.form_type || 'contact',
         message: body.message || body.comments || null,
-        value: parseFloat(body.value || body.lead_value || 0),
+        value: typeof rawValue === 'number' ? rawValue : parseFloat(rawValue),
         currency: body.currency || 'CZK',
         custom_fields: body.custom_fields || {},
         session_id: body.session_id || body.halo_session_id,

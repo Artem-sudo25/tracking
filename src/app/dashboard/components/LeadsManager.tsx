@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Filter, Search } from 'lucide-react'
 import { updateLeadStatus } from '@/app/actions/dashboard'
 import { PipelineMetrics } from './PipelineMetrics'
-import type { LeadStatus, PipelineMetricsData } from '@/types/dashboard'
+import type { LeadAttributionData, LeadStatus, LeadTouchData, PipelineMetricsData } from '@/types/dashboard'
 
 interface Lead {
     id: string
@@ -24,7 +24,7 @@ interface Lead {
     status?: LeadStatus | null
     created_at: string
     deal_value?: number | null
-    attribution_data?: Record<string, unknown> | null
+    attribution_data?: LeadAttributionData | null
 }
 
 interface LeadsManagerProps {
@@ -41,6 +41,9 @@ const normalizeStatus = (status?: LeadStatus | null): LeadStatus => status || 'n
 
 const createDraftStatuses = (leads: Lead[]): Record<string, LeadStatus> =>
     Object.fromEntries(leads.map((lead) => [lead.id, normalizeStatus(lead.status)]))
+
+const formatAttributionSource = (touch?: LeadTouchData | null) =>
+    `${touch?.source || 'Direct'} / ${touch?.medium || '(none)'}`
 
 export function LeadsManager({ initialLeads, metrics }: LeadsManagerProps) {
     const router = useRouter()
@@ -222,7 +225,7 @@ export function LeadsManager({ initialLeads, metrics }: LeadsManagerProps) {
                                     <TableHead>Date</TableHead>
                                     <TableHead>Name</TableHead>
                                     <TableHead>Status</TableHead>
-                                    <TableHead>Source</TableHead>
+                                    <TableHead>Attribution</TableHead>
                                     <TableHead>Value</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -240,6 +243,8 @@ export function LeadsManager({ initialLeads, metrics }: LeadsManagerProps) {
                                         const isDirty = draftStatus !== currentStatus
                                         const isSaving = savingLeadId === lead.id
                                         const feedback = statusFeedback[lead.id]
+                                        const primaryTouch = lead.attribution_data?.last_touch || lead.attribution_data?.first_touch
+                                        const campaign = primaryTouch?.campaign || lead.attribution_data?.first_touch?.campaign
 
                                         return (
                                             <TableRow key={lead.id}>
@@ -290,7 +295,23 @@ export function LeadsManager({ initialLeads, metrics }: LeadsManagerProps) {
                                                         )}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="text-sm">{lead.source}</TableCell>
+                                                <TableCell className="text-sm">
+                                                    {primaryTouch ? (
+                                                        <div className="space-y-1">
+                                                            <div className="font-medium">{formatAttributionSource(primaryTouch)}</div>
+                                                            {campaign && (
+                                                                <div className="text-xs text-muted-foreground break-all">{campaign}</div>
+                                                            )}
+                                                            {lead.attribution_data?.match_type && (
+                                                                <div className="text-xs text-muted-foreground capitalize">
+                                                                    {lead.attribution_data.match_type} match
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-muted-foreground">{lead.source || 'Unattributed'}</span>
+                                                    )}
+                                                </TableCell>
                                                 <TableCell className="text-sm">
                                                     {lead.deal_value ? (
                                                         <span className="font-medium text-green-600">

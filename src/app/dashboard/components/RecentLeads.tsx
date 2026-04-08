@@ -17,7 +17,7 @@ import {
     MapPin,
     Phone,
 } from 'lucide-react'
-import type { LeadListItem, LeadListScope } from '@/types/dashboard'
+import type { LeadClickIds, LeadListItem, LeadListScope, LeadTouchData } from '@/types/dashboard'
 
 interface RecentLeadsProps {
     clientId: string
@@ -28,6 +28,53 @@ interface RecentLeadsProps {
 }
 
 const PAGE_SIZE = 20
+
+function formatAttributionSource(touch?: LeadTouchData | null) {
+    if (!touch?.source && !touch?.medium) {
+        return 'Direct / (none)'
+    }
+
+    return `${touch?.source || 'Direct'} / ${touch?.medium || '(none)'}`
+}
+
+function getTouchRows(touch?: LeadTouchData | null) {
+    if (!touch) {
+        return []
+    }
+
+    return [
+        { label: 'Source', value: formatAttributionSource(touch) },
+        { label: 'Campaign', value: touch.campaign },
+        { label: 'Content', value: touch.content },
+        { label: 'Term', value: touch.term },
+        { label: 'Landing', value: touch.landing },
+        { label: 'Referrer', value: touch.referrer },
+    ].filter((row): row is { label: string; value: string } => Boolean(row.value))
+}
+
+function getClickIdRows(clickIds?: LeadClickIds | null) {
+    if (!clickIds) {
+        return []
+    }
+
+    return [
+        { label: 'FBCLID', value: clickIds.fbclid },
+        { label: 'FBC', value: clickIds.fbc },
+        { label: 'FBP', value: clickIds.fbp },
+        { label: 'GCLID', value: clickIds.gclid },
+        { label: 'TTCLID', value: clickIds.ttclid },
+    ].filter((row): row is { label: string; value: string } => Boolean(row.value))
+}
+
+function getUrlParamRows(params?: Record<string, string> | null) {
+    if (!params) {
+        return []
+    }
+
+    return Object.entries(params)
+        .filter(([, value]) => Boolean(value))
+        .map(([label, value]) => ({ label, value }))
+}
 
 export function RecentLeads({
     clientId,
@@ -216,6 +263,18 @@ export function RecentLeads({
                         ) : (
                             visibleLeads.map((lead) => {
                                 const isExpanded = expandedLeads.has(lead.id)
+                                const summaryTouch = lead.attribution_data?.last_touch || lead.attribution_data?.first_touch
+                                const firstTouchRows = getTouchRows(lead.attribution_data?.first_touch)
+                                const lastTouchRows = getTouchRows(lead.attribution_data?.last_touch)
+                                const clickIdRows = getClickIdRows(lead.attribution_data?.click_ids)
+                                const urlParamRows = getUrlParamRows(lead.attribution_data?.url_params)
+                                const hasAttributionDetails =
+                                    firstTouchRows.length > 0 ||
+                                    lastTouchRows.length > 0 ||
+                                    clickIdRows.length > 0 ||
+                                    urlParamRows.length > 0 ||
+                                    Boolean(lead.attribution_data?.match_type) ||
+                                    Boolean(lead.attribution_data?.session_id)
 
                                 return (
                                     <div
@@ -239,10 +298,10 @@ export function RecentLeads({
                                                     <span>{getFormTypeLabel(lead.form_type)}</span>
                                                     <span>•</span>
                                                     <span>{formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}</span>
-                                                    {lead.attribution_data?.first_touch?.source && (
+                                                    {summaryTouch?.source && (
                                                         <>
                                                             <span>•</span>
-                                                            <span>{lead.attribution_data.first_touch.source}</span>
+                                                            <span>{summaryTouch.source}</span>
                                                         </>
                                                     )}
                                                 </div>
@@ -302,25 +361,72 @@ export function RecentLeads({
                                                     </div>
                                                 )}
 
-                                                {lead.attribution_data?.first_touch && (
+                                                {hasAttributionDetails && (
                                                     <div className="space-y-2">
                                                         <p className="text-xs font-medium text-muted-foreground">Attribution</p>
-                                                        <div className="grid gap-2 text-xs md:grid-cols-2">
-                                                            <div>
-                                                                <span className="text-muted-foreground">First Touch: </span>
-                                                                <span className="font-medium">
-                                                                    {lead.attribution_data.first_touch.source} / {lead.attribution_data.first_touch.medium}
-                                                                </span>
-                                                                {lead.attribution_data.first_touch.campaign && (
-                                                                    <span className="text-muted-foreground"> ({lead.attribution_data.first_touch.campaign})</span>
-                                                                )}
-                                                            </div>
-                                                            {lead.attribution_data.last_touch && (
-                                                                <div>
-                                                                    <span className="text-muted-foreground">Last Touch: </span>
-                                                                    <span className="font-medium">
-                                                                        {lead.attribution_data.last_touch.source} / {lead.attribution_data.last_touch.medium}
-                                                                    </span>
+                                                        <div className="grid gap-4 text-xs md:grid-cols-2">
+                                                            {firstTouchRows.length > 0 && (
+                                                                <div className="space-y-1">
+                                                                    <p className="font-medium text-foreground">First Touch</p>
+                                                                    {firstTouchRows.map((row) => (
+                                                                        <div key={`first-${row.label}`}>
+                                                                            <span className="text-muted-foreground">{row.label}: </span>
+                                                                            <span className="font-medium break-all">{row.value}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            {lastTouchRows.length > 0 && (
+                                                                <div className="space-y-1">
+                                                                    <p className="font-medium text-foreground">Last Touch</p>
+                                                                    {lastTouchRows.map((row) => (
+                                                                        <div key={`last-${row.label}`}>
+                                                                            <span className="text-muted-foreground">{row.label}: </span>
+                                                                            <span className="font-medium break-all">{row.value}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                            {clickIdRows.length > 0 && (
+                                                                <div className="space-y-1 md:col-span-2">
+                                                                    <p className="font-medium text-foreground">Click IDs</p>
+                                                                    <div className="grid gap-2 md:grid-cols-2">
+                                                                        {clickIdRows.map((row) => (
+                                                                            <div key={row.label}>
+                                                                                <span className="text-muted-foreground">{row.label}: </span>
+                                                                                <span className="font-medium break-all">{row.value}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {urlParamRows.length > 0 && (
+                                                                <div className="space-y-1 md:col-span-2">
+                                                                    <p className="font-medium text-foreground">URL Parameters</p>
+                                                                    <div className="grid gap-2 md:grid-cols-2">
+                                                                        {urlParamRows.map((row) => (
+                                                                            <div key={row.label}>
+                                                                                <span className="text-muted-foreground">{row.label}: </span>
+                                                                                <span className="font-medium break-all">{row.value}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {(lead.attribution_data?.match_type || lead.attribution_data?.session_id) && (
+                                                                <div className="space-y-1 md:col-span-2">
+                                                                    {lead.attribution_data?.match_type && (
+                                                                        <div>
+                                                                            <span className="text-muted-foreground">Match Type: </span>
+                                                                            <span className="font-medium capitalize">{lead.attribution_data.match_type}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {lead.attribution_data?.session_id && (
+                                                                        <div>
+                                                                            <span className="text-muted-foreground">Session ID: </span>
+                                                                            <span className="font-medium break-all">{lead.attribution_data.session_id}</span>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                         </div>
