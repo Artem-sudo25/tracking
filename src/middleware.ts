@@ -3,6 +3,8 @@ import { type NextRequest, NextResponse } from 'next/server'
 const ALLOWED_ORIGINS = [
   'https://www.haloagency.cz',
   'https://haloagency.cz',
+  'https://www.catcafeprague.com',
+  'https://catcafeprague.com',
   'http://localhost:3000',
   'http://localhost:3001'
 ]
