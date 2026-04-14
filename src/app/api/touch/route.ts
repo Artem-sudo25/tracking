@@ -20,6 +20,8 @@ interface SessionTouchUpdate {
     lt_landing: string | null
     lt_timestamp: string
     updated_at: string
+    country?: string | null
+    city?: string | null
     gclid?: string | null
     fbclid?: string | null
     fbc?: string | null
@@ -71,6 +73,9 @@ export async function POST(request: NextRequest) {
         // Helper to hash IP
         const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown'
         const ipHash = await hashString(ip)
+
+        const country = request.headers.get('x-vercel-ip-country') || null
+        const city = request.headers.get('x-vercel-ip-city') || null
 
         const userAgent = request.headers.get('user-agent') || ''
         const device = parseUserAgent(userAgent)
@@ -158,9 +163,8 @@ export async function POST(request: NextRequest) {
                 os_version: device.osVersion,
 
                 ip_hash: ipHash,
-                // Geo headers might not be available here if called from client-side fetch, 
-                // unless passed through or inferred from IP by Supabase/Edge function.
-                // For now we skip geo if not available.
+                country,
+                city,
 
                 language: request.headers.get('accept-language')?.split(',')[0] || 'unknown',
                 custom_params: customParams,
@@ -179,6 +183,8 @@ export async function POST(request: NextRequest) {
                 updated_at: new Date().toISOString(),
             }
 
+            if (country) updateData.country = country
+            if (city) updateData.city = city
             if (body.gclid) updateData.gclid = body.gclid
             if (body.fbclid) updateData.fbclid = body.fbclid
             if (fbc) updateData.fbc = fbc
@@ -229,9 +235,6 @@ export async function POST(request: NextRequest) {
 
         // === FORWARD TO FACEBOOK (SERVER-SIDE PAGEVIEW) ===
         if (consentStatus === 'granted') {
-            const country = request.headers.get('x-vercel-ip-country')
-            const city = request.headers.get('x-vercel-ip-city')
-
             const { data: clientData } = await supabase
                 .from('clients')
                 .select('settings')
