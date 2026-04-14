@@ -12,6 +12,11 @@
     var IDENTIFY_ENDPOINT = SITE_URL + '/api/identify';
     var EVENT_ENDPOINT = SITE_URL + '/api/event';
 
+    function getCookie(name) {
+        var match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+        return match ? match[2] : null;
+    }
+
     // Parse URL params
     var params = new URLSearchParams(window.location.search);
 
@@ -30,6 +35,8 @@
         referrer: document.referrer || null,
         landing: window.location.pathname + window.location.search,
         page_title: document.title,
+        fbc: getCookie('_fbc'),
+        fbp: getCookie('_fbp'),
     };
 
     // Check consent (common CMPs + HaloAgency custom consent)
@@ -97,8 +104,4 @@
             console.error('HaloTrack error:', err);
         });
 
-    function getCookie(name) {
-        var match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-        return match ? match[2] : null;
-    }
 })();

@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
         }
 
         const consentStatus = body.consent || 'unknown'
-        const existingFbc = request.cookies.get('_fbc')?.value || null
-        const existingFbp = request.cookies.get('_fbp')?.value || null
+        const existingFbc = request.cookies.get('_fbc')?.value || body.fbc || null
+        const existingFbp = request.cookies.get('_fbp')?.value || body.fbp || null
         const fbc = buildFacebookClickCookie(existingFbc, body.fbclid)
         const fbp = buildFacebookBrowserCookie(existingFbp)
         const customParams = extractCustomParams(body.custom_params, body.landing)
