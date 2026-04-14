@@ -99,6 +99,14 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // Normalize known UTM medium variations
+        if (inferredSource === 'facebook' || inferredSource === 'fb' || inferredSource === 'meta') {
+            inferredSource = 'facebook'
+            if (inferredMedium === 'cpc' || inferredMedium === 'paid' || inferredMedium === 'social') {
+                inferredMedium = 'paid_social'
+            }
+        }
+
         const referrerHostname = (() => {
             try { return body.referrer ? new URL(body.referrer).hostname : null }
             catch { return null }
