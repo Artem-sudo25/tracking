@@ -37,6 +37,10 @@
         page_title: document.title,
         fbc: getCookie('_fbc'),
         fbp: getCookie('_fbp'),
+        navigation_type: (typeof PerformanceNavigationTiming !== 'undefined' &&
+            performance.getEntriesByType('navigation')[0])
+            ? performance.getEntriesByType('navigation')[0].type
+            : null,
     };
 
     // Check consent (common CMPs + HaloAgency custom consent)
