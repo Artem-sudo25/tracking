@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendLeadToFacebook } from '@/lib/forwarding/facebook-lead'
 import { sendLeadToGoogle } from '@/lib/forwarding/google-lead'
+import { enqueueFailedForwarding } from '@/lib/forwarding/queue'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -229,6 +230,15 @@ export async function POST(request: NextRequest) {
                         .update({ sent_to_facebook: true })
                         .eq('client_id', CLIENT_ID)
                         .eq('external_lead_id', lead.external_id)
+                } else if (fbResult && !fbResult.success && fbResult.payload) {
+                    await enqueueFailedForwarding({
+                        clientId: CLIENT_ID,
+                        eventType: 'lead',
+                        eventId,
+                        platform: 'facebook',
+                        payload: fbResult.payload,
+                        error: String(fbResult.response?.error?.message || fbResult.error || 'unknown'),
+                    })
                 }
             } else {
                 console.log('[Lead Webhook] FB Skipped: Missing settings or already sent');
@@ -249,6 +259,15 @@ export async function POST(request: NextRequest) {
                         .update({ sent_to_google: true })
                         .eq('client_id', CLIENT_ID)
                         .eq('external_lead_id', lead.external_id)
+                } else if (googleResult && !googleResult.success && googleResult.payload) {
+                    await enqueueFailedForwarding({
+                        clientId: CLIENT_ID,
+                        eventType: 'lead',
+                        eventId,
+                        platform: 'google',
+                        payload: googleResult.payload,
+                        error: String(googleResult.error || 'unknown'),
+                    })
                 }
             } else {
                 console.log('[Lead Webhook] Google Skipped: Missing settings or already sent');
