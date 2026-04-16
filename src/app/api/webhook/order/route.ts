@@ -184,8 +184,16 @@ export async function POST(request: NextRequest) {
 
             const settings = clientData?.settings || {}
 
+            // Check if already sent (to prevent double events on retries)
+            const { data: existingOrder } = await supabase
+                .from('orders')
+                .select('sent_to_facebook, sent_to_google')
+                .eq('client_id', CLIENT_ID)
+                .eq('external_order_id', order.external_id)
+                .single()
+
             // Facebook CAPI
-            if (settings.facebook?.pixel_id && settings.facebook?.access_token) {
+            if (settings.facebook?.pixel_id && settings.facebook?.access_token && !existingOrder?.sent_to_facebook) {
                 fbResult = await sendToFacebook({
                     session,
                     order,
@@ -213,7 +221,7 @@ export async function POST(request: NextRequest) {
             }
 
             // Google Enhanced Conversions
-            if (settings.google?.measurement_id && settings.google?.api_secret) {
+            if (settings.google?.measurement_id && settings.google?.api_secret && !existingOrder?.sent_to_google) {
                 googleResult = await sendToGoogle({
                     session,
                     order,
