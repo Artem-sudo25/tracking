@@ -15,14 +15,16 @@ export async function sendLeadToGoogle(params: GoogleLeadParams) {
         const hashedPhone = lead.phone ? await sha256(normalizePhone(lead.phone)) : null
 
         const payload = {
-            client_id: session.session_id,
+            client_id: session.ga_client_id || session.session_id,
             events: [{
                 name: 'generate_lead_v2',
                 params: {
                     value: lead.value || 0,
                     currency: lead.currency || 'CZK',
                     form_type: lead.form_type || 'contact',
-                    transaction_id: lead.external_id, // Critical for deduplication
+                    transaction_id: lead.external_id,
+                    ...(session.gclid ? { gclid: session.gclid } : {}),
+                    ...(session.session_id ? { session_id: session.session_id } : {}),
                 },
             }],
             user_data: {

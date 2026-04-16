@@ -88,6 +88,9 @@ CREATE TABLE sessions (
   phone TEXT,
   external_id TEXT,
   
+  -- GA4 Client ID (for Measurement Protocol matching)
+  ga_client_id TEXT,
+
   -- Consent
   consent_status TEXT DEFAULT 'unknown',
   

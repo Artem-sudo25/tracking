@@ -37,6 +37,13 @@
         page_title: document.title,
         fbc: getCookie('_fbc'),
         fbp: getCookie('_fbp'),
+        ga_client_id: (function() {
+            var ga = getCookie('_ga');
+            if (!ga) return null;
+            // _ga cookie format: GA1.1.XXXXXXXXXX.XXXXXXXXXX — extract the last two parts
+            var parts = ga.split('.');
+            return parts.length >= 4 ? parts.slice(2).join('.') : ga;
+        })(),
         navigation_type: (typeof PerformanceNavigationTiming !== 'undefined' &&
             performance.getEntriesByType('navigation')[0])
             ? performance.getEntriesByType('navigation')[0].type

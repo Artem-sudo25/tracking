@@ -10,13 +10,14 @@ export async function sendToGoogle(params: GoogleParams): Promise<ForwardingResu
         const hashedPhone = order.phone ? await sha256(normalizePhone(order.phone)) : null
 
         const payload = {
-            client_id: session.session_id,
+            client_id: session.ga_client_id || session.session_id,
             events: [{
                 name: 'purchase',
                 params: {
                     transaction_id: order.external_id,
                     value: order.total,
                     currency: order.currency || 'CZK',
+                    ...(session.gclid ? { gclid: session.gclid } : {}),
                     items: order.items?.map((item: any) => ({
                         item_id: item.id,
                         item_name: item.name,

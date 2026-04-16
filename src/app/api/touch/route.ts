@@ -175,6 +175,7 @@ export async function POST(request: NextRequest) {
                 city,
 
                 language: request.headers.get('accept-language')?.split(',')[0] || 'unknown',
+                ga_client_id: body.ga_client_id || null,
                 custom_params: customParams,
             })
         } else if (hasTouchData) {
@@ -200,6 +201,7 @@ export async function POST(request: NextRequest) {
             if (body.ttclid) updateData.ttclid = body.ttclid
             if (body.msclkid) updateData.msclkid = body.msclkid
             if (Object.keys(customParams).length > 0) updateData.custom_params = customParams
+            if (body.ga_client_id) (updateData as any).ga_client_id = body.ga_client_id
 
             await supabase.from('sessions')
                 .update(updateData)
@@ -278,7 +280,7 @@ export async function POST(request: NextRequest) {
             if (settings.google?.measurement_id && settings.google?.api_secret) {
                 // Fire and forget
                 await sendPageViewToGoogle({
-                    session: { session_id: sessionId, user_id: request.cookies.get('user_id')?.value },
+                    session: { session_id: sessionId, ga_client_id: body.ga_client_id, user_id: request.cookies.get('user_id')?.value },
                     url: body.referrer || body.landing,
                     measurementId: settings.google.measurement_id,
                     apiSecret: settings.google.api_secret

@@ -13,8 +13,7 @@ export async function sendPageViewToGoogle(params: GooglePageViewParams) {
     try {
         // Measurement Protocol PageView
         const payload = {
-            client_id: session.session_id,
-            // Google Signals / User ID matching if available
+            client_id: session.ga_client_id || session.session_id,
             user_id: session.user_id || undefined,
             events: [{
                 name: 'page_view',
