@@ -110,7 +110,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
   }, [clientId, dateRange, currentView, showLeads, showPurchases])
 
   useEffect(() => {
-    getSignalHealth(clientId).then(setSignalHealth)
+    getSignalHealth(clientId).then(setSignalHealth).catch(console.error)
   }, [clientId])
 
   return (
