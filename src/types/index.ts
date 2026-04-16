@@ -245,6 +245,22 @@ export interface ForwardingResult {
   success: boolean
   response?: any
   error?: any
+  payload?: Record<string, any>  // the exact HTTP payload sent; stored in queue on failure
+}
+
+export interface ForwardingQueue {
+  id: string
+  client_id: string
+  event_type: 'lead' | 'order'
+  event_id: string
+  platform: 'facebook' | 'google'
+  payload: Record<string, any>
+  status: 'pending' | 'sent' | 'failed' | 'dead'
+  attempts: number
+  next_retry_at: string
+  last_error: string | null
+  created_at: string
+  updated_at: string
 }
 
 // Dashboard Types
