@@ -28,6 +28,10 @@ export async function GET(request: NextRequest) {
     severity: 'critical' | 'warning'
     type: string
     message: string
+    current?: number        // current count in the measured window
+    historical_avg?: number // 7-day per-6h average (volume alerts)
+    rate?: number           // failure rate 0–1 (ratio alerts)
+    total?: number          // denominator (ratio alerts)
   }> = []
 
   for (const client of clients) {
@@ -60,6 +64,8 @@ export async function GET(request: NextRequest) {
         severity: 'critical',
         type: 'zero_leads',
         message: `ZERO leads in last 6h (7-day avg: ${sevenDayAvgPer6h.toFixed(1)}/6h)`,
+        current,
+        historical_avg: parseFloat(sevenDayAvgPer6h.toFixed(2)),
       })
     } else if (sevenDayAvgPer6h > 0 && current < sevenDayAvgPer6h * 0.5) {
       alerts.push({
@@ -68,6 +74,8 @@ export async function GET(request: NextRequest) {
         severity: 'warning',
         type: 'low_volume',
         message: `Low lead volume: ${current} in last 6h (7-day avg: ${sevenDayAvgPer6h.toFixed(1)}/6h, ${Math.round(current / sevenDayAvgPer6h * 100)}% of normal)`,
+        current,
+        historical_avg: parseFloat(sevenDayAvgPer6h.toFixed(2)),
       })
     }
 
@@ -95,6 +103,9 @@ export async function GET(request: NextRequest) {
         severity: 'warning',
         type: 'fb_forward_failures',
         message: `${Math.round(fbFailRate * 100)}% of leads NOT sent to Facebook in last 24h (${notSentFb}/${total24h})`,
+        current: notSentFb ?? 0,
+        total: total24h,
+        rate: parseFloat(fbFailRate.toFixed(3)),
       })
     }
 
@@ -115,6 +126,9 @@ export async function GET(request: NextRequest) {
         severity: 'warning',
         type: 'attribution_gap',
         message: `${Math.round(unmatchedRate * 100)}% of leads unmatched to sessions in last 24h (${unmatchedCount}/${total24h})`,
+        current: unmatchedCount ?? 0,
+        total: total24h,
+        rate: parseFloat(unmatchedRate.toFixed(3)),
       })
     }
   }
