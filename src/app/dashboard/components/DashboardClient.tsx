@@ -19,6 +19,9 @@ import { RecentOrders } from './RecentOrders'
 import { RecentLeads } from './RecentLeads'
 import { VisitorAnalytics } from './VisitorAnalytics'
 import type { LeadsDashboardData, VisitorAnalyticsData } from '@/types/dashboard'
+import { getSignalHealth } from '@/app/actions/signal-health'
+import { SignalHealth } from './SignalHealth'
+import type { SignalHealthData } from '@/types/dashboard'
 
 interface DashboardClientProps {
   clientId: string
@@ -48,6 +51,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
   const [leadsData, setLeadsData] = useState<LeadsDashboardData | null>(null)
   const [visitorData, setVisitorData] = useState<VisitorAnalyticsData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [signalHealth, setSignalHealth] = useState<SignalHealthData | null>(null)
 
   const showLeads = currentView === 'leads' || currentView === 'combined'
   const showPurchases = currentView === 'purchases' || currentView === 'combined'
@@ -104,6 +108,10 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
 
     fetchData()
   }, [clientId, dateRange, currentView, showLeads, showPurchases])
+
+  useEffect(() => {
+    getSignalHealth(clientId).then(setSignalHealth)
+  }, [clientId])
 
   return (
     <div className="space-y-8">
@@ -202,6 +210,12 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
           </div>
         )}
       </div>
+
+      {signalHealth && (
+        <div className="border-t pt-8">
+          <SignalHealth data={signalHealth} />
+        </div>
+      )}
 
       {isLoading && (
         <div className="fixed bottom-4 right-4 bg-background border rounded-lg px-4 py-2 shadow-lg">
