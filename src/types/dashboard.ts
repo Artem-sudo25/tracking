@@ -120,3 +120,20 @@ export interface VisitorAnalyticsData {
     bounceRate: number
   }>
 }
+
+export interface SignalHealthMetric {
+  sent: number    // count that passed (sent, matched, etc.)
+  total: number   // total in period
+  rate: number    // sent / total (0–1); higher is always better
+}
+
+export interface SignalHealthData {
+  fbLeads: SignalHealthMetric       // leads sent_to_facebook=true
+  googleLeads: SignalHealthMetric   // leads sent_to_google=true
+  matchRate: SignalHealthMetric     // leads where match_type != 'none'
+  gaClientId: SignalHealthMetric    // sessions with ga_client_id != null
+  fbc: SignalHealthMetric           // sessions with fbc != null
+  country: SignalHealthMetric       // sessions with country != null
+  queuedRetries: number             // pending items in forwarding_queue
+  deadItems: number                 // dead items needing manual intervention
+}
