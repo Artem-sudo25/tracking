@@ -32,6 +32,8 @@ interface FacebookLeadParams {
 export async function sendLeadToFacebook(params: FacebookLeadParams) {
     const { session, lead, eventId, pixelId, accessToken, testEventCode } = params
 
+    let payload: Record<string, any> | undefined
+
     try {
         const normalizedName = lead.name?.toLowerCase().trim() || ''
         const [firstName, ...lastNameParts] = normalizedName ? normalizedName.split(/\s+/) : []
@@ -44,7 +46,7 @@ export async function sendLeadToFacebook(params: FacebookLeadParams) {
         const hashedCountry = session.country ? await sha256(session.country.toLowerCase()) : null
         const hashedCity = session.city ? await sha256(session.city.toLowerCase().replace(/\s/g, '')) : null
 
-        const payload = {
+        payload = {
             data: [{
                 event_name: 'Lead',
                 event_time: Math.floor(Date.now() / 1000),
@@ -89,11 +91,12 @@ export async function sendLeadToFacebook(params: FacebookLeadParams) {
         return {
             success: response.ok && !result.error,
             response: result,
+            payload,
         }
 
     } catch (error) {
         console.error('Facebook Lead CAPI error:', error)
-        return { success: false, error }
+        return { success: false, error, payload }
     }
 }
 

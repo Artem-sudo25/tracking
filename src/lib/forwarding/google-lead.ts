@@ -10,11 +10,13 @@ interface GoogleLeadParams {
 export async function sendLeadToGoogle(params: GoogleLeadParams) {
     const { session, lead, measurementId, apiSecret } = params
 
+    let payload: Record<string, any> | undefined
+
     try {
         const hashedEmail = lead.email ? await sha256(lead.email.toLowerCase().trim()) : null
         const hashedPhone = lead.phone ? await sha256(normalizePhone(lead.phone)) : null
 
-        const payload = {
+        payload = {
             client_id: session.ga_client_id || session.session_id,
             events: [{
                 name: 'generate_lead_v2',
@@ -43,11 +45,12 @@ export async function sendLeadToGoogle(params: GoogleLeadParams) {
 
         return {
             success: response.ok,
+            payload,
         }
 
     } catch (error) {
         console.error('Google Lead error:', error)
-        return { success: false, error }
+        return { success: false, error, payload }
     }
 }
 

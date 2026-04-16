@@ -5,11 +5,13 @@ import type { GoogleParams, ForwardingResult } from '@/types'
 export async function sendToGoogle(params: GoogleParams): Promise<ForwardingResult> {
     const { session, order, measurementId, apiSecret } = params
 
+    let payload: Record<string, any> | undefined
+
     try {
         const hashedEmail = order.email ? await sha256(order.email.toLowerCase().trim()) : null
         const hashedPhone = order.phone ? await sha256(normalizePhone(order.phone)) : null
 
-        const payload = {
+        payload = {
             client_id: session.ga_client_id || session.session_id,
             events: [{
                 name: 'purchase',
@@ -42,11 +44,12 @@ export async function sendToGoogle(params: GoogleParams): Promise<ForwardingResu
 
         return {
             success: response.ok,
+            payload,
         }
 
     } catch (error) {
         console.error('Google EC error:', error)
-        return { success: false, error }
+        return { success: false, error, payload }
     }
 }
 

@@ -5,6 +5,8 @@ import type { FacebookParams, ForwardingResult } from '@/types'
 export async function sendToFacebook(params: FacebookParams): Promise<ForwardingResult> {
     const { session, order, eventId, pixelId, accessToken, testEventCode } = params
 
+    let payload: Record<string, any> | undefined
+
     try {
         // Hash user data (Facebook requires SHA256)
         const hashedEmail = order.email ? await sha256(order.email.toLowerCase().trim()) : null
@@ -12,7 +14,7 @@ export async function sendToFacebook(params: FacebookParams): Promise<Forwarding
         const hashedCountry = session.country ? await sha256(session.country.toLowerCase()) : null
         const hashedCity = session.city ? await sha256(session.city.toLowerCase().replace(/\s/g, '')) : null
 
-        const payload = {
+        payload = {
             data: [{
                 event_name: 'Purchase',
                 event_time: Math.floor(Date.now() / 1000),
@@ -61,11 +63,12 @@ export async function sendToFacebook(params: FacebookParams): Promise<Forwarding
         return {
             success: response.ok && !result.error,
             response: result,
+            payload,
         }
 
     } catch (error) {
         console.error('Facebook CAPI error:', error)
-        return { success: false, error }
+        return { success: false, error, payload }
     }
 }
 
