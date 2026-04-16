@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendToFacebook } from '@/lib/forwarding/facebook'
 import { sendToGoogle } from '@/lib/forwarding/google'
+import { enqueueFailedForwarding } from '@/lib/forwarding/queue'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -199,6 +200,15 @@ export async function POST(request: NextRequest) {
                         .update({ sent_to_facebook: true })
                         .eq('client_id', CLIENT_ID)
                         .eq('external_order_id', order.external_id)
+                } else if (fbResult && !fbResult.success && fbResult.payload) {
+                    await enqueueFailedForwarding({
+                        clientId: CLIENT_ID,
+                        eventType: 'order',
+                        eventId: order.external_id,
+                        platform: 'facebook',
+                        payload: fbResult.payload,
+                        error: String(fbResult.response?.error?.message || fbResult.error || 'unknown'),
+                    })
                 }
             }
 
@@ -216,6 +226,15 @@ export async function POST(request: NextRequest) {
                         .update({ sent_to_google: true })
                         .eq('client_id', CLIENT_ID)
                         .eq('external_order_id', order.external_id)
+                } else if (googleResult && !googleResult.success && googleResult.payload) {
+                    await enqueueFailedForwarding({
+                        clientId: CLIENT_ID,
+                        eventType: 'order',
+                        eventId: order.external_id,
+                        platform: 'google',
+                        payload: googleResult.payload,
+                        error: String(googleResult.error || 'unknown'),
+                    })
                 }
             }
         }
