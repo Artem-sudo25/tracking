@@ -84,6 +84,9 @@ export interface Session {
   phone: string | null
   external_id: string | null
 
+  // GA4 Client ID (for Measurement Protocol matching)
+  ga_client_id: string | null
+
   // Consent
   consent_status: 'granted' | 'denied' | 'unknown'
 
