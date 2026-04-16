@@ -299,6 +299,22 @@ CREATE TABLE user_dashboard_activity (
   UNIQUE(user_id, client_id)
 );
 
+-- FORWARDING QUEUE (retry failed ad platform calls)
+CREATE TABLE forwarding_queue (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  event_type TEXT NOT NULL CHECK (event_type IN ('lead', 'order')),
+  event_id TEXT NOT NULL,
+  platform TEXT NOT NULL CHECK (platform IN ('facebook', 'google')),
+  payload JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'dead')),
+  attempts INT NOT NULL DEFAULT 0,
+  next_retry_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_error TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- INDEXES
 CREATE INDEX idx_sessions_client ON sessions(client_id);
 CREATE INDEX idx_sessions_sid ON sessions(client_id, session_id);
@@ -324,6 +340,8 @@ CREATE INDEX idx_touchpoints_session ON touchpoints(session_id);
 CREATE INDEX idx_purchases_client ON purchases(client_id);
 CREATE INDEX idx_purchases_lead ON purchases(lead_id) WHERE lead_id IS NOT NULL;
 CREATE INDEX idx_user_activity_user ON user_dashboard_activity(user_id, client_id);
+CREATE INDEX idx_fq_pending ON forwarding_queue(status, next_retry_at) WHERE status = 'pending';
+CREATE INDEX idx_fq_client ON forwarding_queue(client_id);
 
 
 -- ROW LEVEL SECURITY
@@ -336,6 +354,7 @@ ALTER TABLE ad_spend ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE touchpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_dashboard_activity ENABLE ROW LEVEL SECURITY;
+ALTER TABLE forwarding_queue ENABLE ROW LEVEL SECURITY;
 
 
 -- Policies: Service role has full access
@@ -348,4 +367,5 @@ CREATE POLICY "Service role full access" ON ad_spend FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON purchases FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON touchpoints FOR ALL USING (true);
 CREATE POLICY "Service role full access" ON user_dashboard_activity FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON forwarding_queue FOR ALL USING (true);
 
