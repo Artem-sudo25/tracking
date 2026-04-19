@@ -50,69 +50,78 @@
             : null,
     };
 
-    // Check consent (common CMPs + HaloAgency custom consent)
-    var consent = 'unknown';
-    if (typeof window.CookieYes !== 'undefined') {
-        var cky = window.CookieYes.getConsent();
-        consent = cky.analytics ? 'granted' : 'denied';
-    } else if (typeof window.Cookiebot !== 'undefined') {
-        consent = window.Cookiebot.consent.statistics ? 'granted' : 'denied';
-    } else {
-        // HaloAgency starter / custom consent stored in localStorage
+    function getConsent() {
+        if (typeof window.CookieYes !== 'undefined') {
+            var cky = window.CookieYes.getConsent();
+            return cky.analytics ? 'granted' : 'denied';
+        }
+        if (typeof window.Cookiebot !== 'undefined') {
+            return window.Cookiebot.consent.statistics ? 'granted' : 'denied';
+        }
         try {
             var haloConsent = localStorage.getItem('halo_cookie_consent');
             if (haloConsent) {
                 var parsed = JSON.parse(haloConsent);
-                consent = parsed.analytics ? 'granted' : 'denied';
+                return parsed.analytics ? 'granted' : 'denied';
             }
         } catch {}
+        return 'unknown';
     }
 
-    data.consent = consent;
+    function fireTracking() {
+        data.consent = getConsent();
 
-    // Call server
-    fetch(ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data)
-    })
-        .then(function (r) { return r.json(); })
-        .then(function (result) {
-            window.HaloTrack = {
-                sessionId: result.session_id,
-
-                getSessionId: function () {
-                    return this.sessionId || getCookie('_halo');
-                },
-
-                identify: function (userData) {
-                    return fetch(IDENTIFY_ENDPOINT, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify(userData)
-                    });
-                },
-
-                track: function (eventName, properties) {
-                    return fetch(EVENT_ENDPOINT, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({
-                            event_name: eventName,
-                            properties: properties
-                        })
-                    });
-                }
-            };
-
-            // Dispatch ready event
-            window.dispatchEvent(new CustomEvent('halotrack:ready'));
+        fetch(ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(data)
         })
-        .catch(function (err) {
-            console.error('HaloTrack error:', err);
-        });
+            .then(function (r) { return r.json(); })
+            .then(function (result) {
+                window.HaloTrack = {
+                    sessionId: result.session_id,
+
+                    getSessionId: function () {
+                        return this.sessionId || getCookie('_halo');
+                    },
+
+                    identify: function (userData) {
+                        return fetch(IDENTIFY_ENDPOINT, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            body: JSON.stringify(userData)
+                        });
+                    },
+
+                    track: function (eventName, properties) {
+                        return fetch(EVENT_ENDPOINT, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            body: JSON.stringify({
+                                event_name: eventName,
+                                properties: properties
+                            })
+                        });
+                    }
+                };
+
+                window.dispatchEvent(new CustomEvent('halotrack:ready'));
+            })
+            .catch(function (err) {
+                console.error('HaloTrack error:', err);
+            });
+    }
+
+    // Cookiebot fires CookiebotOnConsentReady asynchronously — wait for it
+    // before reading consent so we don't incorrectly get 'denied' on a user
+    // who has already accepted analytics.
+    if (typeof window.Cookiebot !== 'undefined' && !window.Cookiebot.consent.hasResponse) {
+        window.addEventListener('CookiebotOnConsentReady', fireTracking, { once: true });
+    } else {
+        fireTracking();
+    }
 
 })();
