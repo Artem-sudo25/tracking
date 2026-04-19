@@ -160,7 +160,7 @@ export function ExportConversions({ clientId, clientType = 'combined' }: ExportC
 
                 <div className="space-y-1">
                     <label className="text-sm font-medium">Date range</label>
-                    <DateRangePicker value={dateRange} onChange={setDateRange} />
+                    <DateRangePicker date={dateRange} onDateChange={setDateRange} />
                 </div>
 
                 {/* Orders section */}
