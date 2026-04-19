@@ -169,26 +169,26 @@ add_action( 'woocommerce_checkout_before_order_review', function () {
  * Called from multiple hooks to cover Classic + Blocks checkout + WC 10.x.
  *
  * Session ID sources (in priority order):
- *   1. $_POST['halo_session_id']  — classic checkout hidden field
- *   2. $_COOKIE['_halo']          — first-party cookie (fallback for Blocks /
- *                                   any case the POST field is missing)
+ *   1. $_POST['halo_session_id']     — classic checkout hidden field
+ *   2. Store API JSON body           — extensions.halotrack.session_id or
+ *                                      top-level halo_session_id (Blocks checkout)
+ *   3. $_COOKIE['_halo']             — first-party cookie set by /api/touch
+ *                                      (fallback, cross-subdomain via .nejbalonky.cz)
+ *
+ * No-ops if _halo_session is already present on the order (earlier hook won).
+ * Logs only on complete capture failure (all three sources empty).
  */
 function halotrack_capture_session( WC_Order $order, string $hook = 'unknown' ): void {
-    $order_id = $order->get_id();
-
-    // Already captured — don't overwrite
+    // Already captured by an earlier hook — don't overwrite
     if ( $order->get_meta( '_halo_session' ) ) {
-        error_log( "[HaloTrack] capture [$hook] order=$order_id SKIP — session already saved" );
         return;
     }
 
     $session_id = '';
-    $source     = 'none';
 
     // 1. Classic checkout POST field
     if ( ! empty( $_POST['halo_session_id'] ) ) {
         $session_id = sanitize_text_field( wp_unslash( $_POST['halo_session_id'] ) );
-        $source     = 'POST';
     }
 
     // 2. Store API: body param (Blocks checkout)
@@ -197,13 +197,10 @@ function halotrack_capture_session( WC_Order $order, string $hook = 'unknown' ):
         if ( $raw ) {
             $json = json_decode( $raw, true );
             if ( is_array( $json ) ) {
-                // Try extensions.halotrack.session_id and top-level halo_session_id
                 if ( ! empty( $json['extensions']['halotrack']['session_id'] ) ) {
                     $session_id = sanitize_text_field( $json['extensions']['halotrack']['session_id'] );
-                    $source     = 'storeAPI-extensions';
                 } elseif ( ! empty( $json['halo_session_id'] ) ) {
                     $session_id = sanitize_text_field( $json['halo_session_id'] );
-                    $source     = 'storeAPI-root';
                 }
             }
         }
@@ -212,20 +209,17 @@ function halotrack_capture_session( WC_Order $order, string $hook = 'unknown' ):
     // 3. Cookie fallback (_halo cookie set by /api/touch)
     if ( empty( $session_id ) && ! empty( $_COOKIE['_halo'] ) ) {
         $session_id = sanitize_text_field( $_COOKIE['_halo'] );
-        $source     = 'cookie';
     }
-
-    $post_keys   = implode( ',', array_keys( $_POST ) );
-    $cookie_keys = implode( ',', array_keys( $_COOKIE ) );
-
-    error_log(
-        "[HaloTrack] capture [$hook] order=$order_id " .
-        "session_id=" . ( $session_id ?: '(empty)' ) . " source=$source " .
-        "post_keys={$post_keys} cookie_keys={$cookie_keys}"
-    );
 
     if ( ! empty( $session_id ) ) {
         $order->update_meta_data( '_halo_session', $session_id );
+    } else {
+        // Only log when every source is empty — this is actionable (tracking
+        // didn't reach this user, or the cookie was scoped wrong, etc.)
+        error_log(
+            "[HaloTrack] capture [$hook] order=" . $order->get_id() .
+            " — no session_id found (POST, Store API body, _halo cookie all empty)"
+        );
     }
 
     // Customer IP — needed for geo since webhook fires server-to-server

@@ -157,8 +157,10 @@ export async function POST(request: NextRequest) {
             match_type: 'none',
         }
 
-        // Generate event ID for deduplication
-        const eventId = `${CLIENT_ID}_${order.external_id}_${Date.now()}`
+        // Event ID for Meta CAPI <-> browser Pixel deduplication.
+        // Must be deterministic from public data so the browser-side Pixel
+        // tag can construct the same value. Order ID is unique per pixel.
+        const eventId = `order_${order.external_id}`
 
         // === SAVE ORDER ===
         const { error: orderError } = await supabase.from('orders').upsert({
