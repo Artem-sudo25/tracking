@@ -1,4 +1,4 @@
-# HaloTrack by Artem
+# HaloTrack by Artem Horvatsky
 
 **First-party, GDPR-compliant attribution tracking system for marketing agencies.**
 
