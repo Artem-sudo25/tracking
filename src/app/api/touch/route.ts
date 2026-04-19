@@ -291,32 +291,38 @@ export async function POST(request: NextRequest) {
         // Return session_id so client can store it
         const response = NextResponse.json({ session_id: sessionId })
 
-        // Set cookie if on same domain
-        response.cookies.set('_halo', sessionId, {
+        // Derive cookie domain from request host so cookies are shared between
+        // the HaloTrack subdomain (e.g. cdn.nejbalonky.cz) and the client's
+        // apex / checkout domain (e.g. nejbalonky.cz). Without this, the
+        // _halo cookie would be scoped to cdn.* only and PHP on the checkout
+        // domain would see $_COOKIE['_halo'] as empty.
+        const host = request.headers.get('host') || ''
+        const cookieDomain = deriveCookieDomain(host)
+
+        const baseCookieOpts = {
             httpOnly: false,
             secure: process.env.NODE_ENV === 'production',
-            maxAge: 31536000,
             path: '/',
-            sameSite: 'lax',
+            sameSite: 'lax' as const,
+            ...(cookieDomain ? { domain: cookieDomain } : {}),
+        }
+
+        response.cookies.set('_halo', sessionId, {
+            ...baseCookieOpts,
+            maxAge: 31536000,
         })
 
         if (fbc) {
             response.cookies.set('_fbc', fbc, {
-                httpOnly: false,
-                secure: process.env.NODE_ENV === 'production',
+                ...baseCookieOpts,
                 maxAge: 7776000,
-                path: '/',
-                sameSite: 'lax',
             })
         }
 
         if (fbp) {
             response.cookies.set('_fbp', fbp, {
-                httpOnly: false,
-                secure: process.env.NODE_ENV === 'production',
+                ...baseCookieOpts,
                 maxAge: 7776000,
-                path: '/',
-                sameSite: 'lax',
             })
         }
 
@@ -329,6 +335,37 @@ export async function POST(request: NextRequest) {
 }
 
 // ... (helper functions area)
+
+/**
+ * Derive the cookie Domain attribute from the request host so cookies are
+ * shared across subdomains (cdn.example.com ↔ example.com ↔ www.example.com).
+ *
+ * Examples:
+ *   cdn.nejbalonky.cz   → .nejbalonky.cz
+ *   www.example.co.uk   → .example.co.uk   (rough — good enough for our setup)
+ *   example.cz          → (undefined, browser scopes to host)
+ *   localhost           → (undefined)
+ *   localhost:3000      → (undefined)
+ */
+function deriveCookieDomain(host: string): string | undefined {
+    const hostname = host.split(':')[0] // strip port
+    if (!hostname || hostname === 'localhost') return undefined
+
+    // IP addresses — don't try to share
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return undefined
+
+    const parts = hostname.split('.')
+    // Single label (e.g. "localhost") or empty → no cross-subdomain sharing
+    if (parts.length < 2) return undefined
+
+    // For 2-label hosts (example.cz) the browser already scopes to the host.
+    // For 3+ labels (cdn.example.cz) strip the leftmost label and prefix with a dot.
+    if (parts.length >= 3) {
+        return '.' + parts.slice(1).join('.')
+    }
+
+    return undefined
+}
 
 async function hashString(str: string): Promise<string> {
     const encoder = new TextEncoder()

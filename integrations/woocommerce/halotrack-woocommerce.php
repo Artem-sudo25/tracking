@@ -10,6 +10,18 @@
 
 defined( 'ABSPATH' ) || exit;
 
+// ─── HPOS compatibility ───────────────────────────────────────────────────────
+// Declare plugin compatible with High-Performance Order Storage so that
+// $order->get_meta() reads / writes go to wc_orders_meta (not wp_postmeta).
+
+add_action( 'before_woocommerce_init', function () {
+    if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility(
+            'custom_order_tables', __FILE__, true
+        );
+    }
+} );
+
 // ─── Settings page ────────────────────────────────────────────────────────────
 
 add_action( 'admin_menu', function () {
@@ -87,22 +99,50 @@ add_action( 'wp_enqueue_scripts', function () {
         false   // load in <head> so session ID is ready before checkout JS runs
     );
 
-    // Inject session ID into checkout hidden field once HaloTrack is ready
+    // Inject session ID into checkout form — JS-driven so it works regardless
+    // of which checkout template the theme uses (Shoptimizer, custom, etc.)
+    // Inject session ID into checkout form — works with any theme template
     wp_add_inline_script( 'halotrack', "
-        document.addEventListener('halotrack:ready', function () {
-            var field = document.getElementById('halo_session_id');
-            if (field && window.HaloTrack) {
-                field.value = window.HaloTrack.getSessionId();
-            }
-        });
+        (function () {
+            function setHaloSessionId() {
+                if (!window.HaloTrack) return;
 
-        // Fallback: also try on DOMContentLoaded in case event already fired
-        document.addEventListener('DOMContentLoaded', function () {
-            var field = document.getElementById('halo_session_id');
-            if (field && window.HaloTrack && !field.value) {
+                var field = document.getElementById('halo_session_id');
+
+                // Field not rendered by WC — find form and create it manually
+                if (!field) {
+                    var form = document.querySelector('form.checkout, form.woocommerce-checkout, form[name=\"checkout\"]');
+                    if (!form) return;
+                    field = document.createElement('input');
+                    field.type = 'hidden';
+                    field.id   = 'halo_session_id';
+                    field.name = 'halo_session_id';
+                    form.appendChild(field);
+                }
+
                 field.value = window.HaloTrack.getSessionId();
             }
-        });
+
+            // Set on HaloTrack ready + DOM ready
+            document.addEventListener('halotrack:ready', setHaloSessionId);
+            document.addEventListener('DOMContentLoaded', setHaloSessionId);
+
+            // Re-set after every WooCommerce AJAX checkout refresh
+            // (WC wipes the field value when it recalculates shipping/totals)
+            document.addEventListener('DOMContentLoaded', function () {
+                if (window.jQuery) {
+                    jQuery(document.body).on('updated_checkout', setHaloSessionId);
+                }
+            });
+
+            // Final safety net: set value right before form submits
+            document.addEventListener('submit', function (e) {
+                var f = e.target;
+                if (f && (f.classList.contains('checkout') || f.classList.contains('woocommerce-checkout') || f.name === 'checkout')) {
+                    setHaloSessionId();
+                }
+            }, true); // capture phase — fires before WooCommerce serialises the form
+        })();
     " );
 } );
 
@@ -124,22 +164,104 @@ add_action( 'woocommerce_checkout_before_order_review', function () {
 
 // ─── 3. Save session ID to order meta when order is placed ────────────────────
 
-add_action( 'woocommerce_checkout_update_order_meta', function ( $order_id ) {
-    $session_id = isset( $_POST['halo_session_id'] )
-        ? sanitize_text_field( wp_unslash( $_POST['halo_session_id'] ) )
-        : '';
+/**
+ * Capture HaloTrack session ID and customer IP onto an order.
+ * Called from multiple hooks to cover Classic + Blocks checkout + WC 10.x.
+ *
+ * Session ID sources (in priority order):
+ *   1. $_POST['halo_session_id']  — classic checkout hidden field
+ *   2. $_COOKIE['_halo']          — first-party cookie (fallback for Blocks /
+ *                                   any case the POST field is missing)
+ */
+function halotrack_capture_session( WC_Order $order, string $hook = 'unknown' ): void {
+    $order_id = $order->get_id();
+
+    // Already captured — don't overwrite
+    if ( $order->get_meta( '_halo_session' ) ) {
+        error_log( "[HaloTrack] capture [$hook] order=$order_id SKIP — session already saved" );
+        return;
+    }
+
+    $session_id = '';
+    $source     = 'none';
+
+    // 1. Classic checkout POST field
+    if ( ! empty( $_POST['halo_session_id'] ) ) {
+        $session_id = sanitize_text_field( wp_unslash( $_POST['halo_session_id'] ) );
+        $source     = 'POST';
+    }
+
+    // 2. Store API: body param (Blocks checkout)
+    if ( empty( $session_id ) ) {
+        $raw = file_get_contents( 'php://input' );
+        if ( $raw ) {
+            $json = json_decode( $raw, true );
+            if ( is_array( $json ) ) {
+                // Try extensions.halotrack.session_id and top-level halo_session_id
+                if ( ! empty( $json['extensions']['halotrack']['session_id'] ) ) {
+                    $session_id = sanitize_text_field( $json['extensions']['halotrack']['session_id'] );
+                    $source     = 'storeAPI-extensions';
+                } elseif ( ! empty( $json['halo_session_id'] ) ) {
+                    $session_id = sanitize_text_field( $json['halo_session_id'] );
+                    $source     = 'storeAPI-root';
+                }
+            }
+        }
+    }
+
+    // 3. Cookie fallback (_halo cookie set by /api/touch)
+    if ( empty( $session_id ) && ! empty( $_COOKIE['_halo'] ) ) {
+        $session_id = sanitize_text_field( $_COOKIE['_halo'] );
+        $source     = 'cookie';
+    }
+
+    $post_keys   = implode( ',', array_keys( $_POST ) );
+    $cookie_keys = implode( ',', array_keys( $_COOKIE ) );
+
+    error_log(
+        "[HaloTrack] capture [$hook] order=$order_id " .
+        "session_id=" . ( $session_id ?: '(empty)' ) . " source=$source " .
+        "post_keys={$post_keys} cookie_keys={$cookie_keys}"
+    );
 
     if ( ! empty( $session_id ) ) {
-        update_post_meta( $order_id, '_halo_session', $session_id );
+        $order->update_meta_data( '_halo_session', $session_id );
     }
 
-    // Also capture customer IP at order time (needed for HaloTrack geo since
-    // the webhook fires server-to-server, not from the customer's browser)
+    // Customer IP — needed for geo since webhook fires server-to-server
     $ip = WC_Geolocation::get_ip_address();
     if ( ! empty( $ip ) ) {
-        update_post_meta( $order_id, '_halo_customer_ip', $ip );
+        $order->update_meta_data( '_halo_customer_ip', $ip );
+    }
+
+    $order->save();
+}
+
+// Universal hook — fires for EVERY new order regardless of checkout flow
+// (classic shortcode, Blocks Store API, REST API, manual admin creation)
+add_action( 'woocommerce_new_order', function ( int $order_id, WC_Order $order ) {
+    halotrack_capture_session( $order, 'woocommerce_new_order' );
+}, 10, 2 );
+
+// Classic checkout — WC 7.2+
+add_action( 'woocommerce_checkout_order_created', function ( WC_Order $order ) {
+    halotrack_capture_session( $order, 'woocommerce_checkout_order_created' );
+} );
+
+// Classic checkout — legacy hook (WC < 7.2, belt-and-suspenders)
+add_action( 'woocommerce_checkout_update_order_meta', function ( int $order_id ) {
+    $order = wc_get_order( $order_id );
+    if ( $order ) {
+        halotrack_capture_session( $order, 'woocommerce_checkout_update_order_meta' );
     }
 } );
+
+// Blocks checkout — Store API (WooCommerce Blocks / WC 8.3+ default for new installs)
+add_action( 'woocommerce_store_api_checkout_update_order_from_request',
+    function ( WC_Order $order, \WP_REST_Request $request ) {
+        halotrack_capture_session( $order, 'woocommerce_store_api_checkout_update_order_from_request' );
+    }, 10, 2
+);
 
 // ─── 4. Forward order to HaloTrack on payment complete ────────────────────────
 
@@ -153,18 +275,19 @@ function halotrack_forward_order( int $order_id ): void {
         return;
     }
 
-    // Prevent double-firing (payment_complete + status_processing can both fire)
-    if ( get_post_meta( $order_id, '_halo_forwarded', true ) === 'yes' ) {
-        return;
-    }
-
     $order = wc_get_order( $order_id );
     if ( ! $order ) {
         return;
     }
 
-    $session_id  = get_post_meta( $order_id, '_halo_session', true );
-    $customer_ip = get_post_meta( $order_id, '_halo_customer_ip', true );
+    // Prevent double-firing (payment_complete + status_processing can both fire).
+    // Use CRUD API — works with both HPOS and legacy post-meta storage.
+    if ( $order->get_meta( '_halo_forwarded' ) === 'yes' ) {
+        return;
+    }
+
+    $session_id  = $order->get_meta( '_halo_session' );
+    $customer_ip = $order->get_meta( '_halo_customer_ip' );
 
     // Build line items
     $line_items = [];
@@ -223,8 +346,9 @@ function halotrack_forward_order( int $order_id ): void {
     $code = wp_remote_retrieve_response_code( $response );
 
     if ( $code >= 200 && $code < 300 ) {
-        update_post_meta( $order_id, '_halo_forwarded', 'yes' );
-        update_post_meta( $order_id, '_halo_forwarded_at', current_time( 'mysql' ) );
+        $order->update_meta_data( '_halo_forwarded', 'yes' );
+        $order->update_meta_data( '_halo_forwarded_at', current_time( 'mysql' ) );
+        $order->save();
     } else {
         $body = wp_remote_retrieve_body( $response );
         error_log( '[HaloTrack] Order ' . $order_id . ' forward failed — HTTP ' . $code . ': ' . $body );
