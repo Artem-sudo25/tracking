@@ -219,6 +219,8 @@ export async function POST(request: NextRequest) {
                     testEventCode: settings.facebook.test_event_code,
                 })
 
+                console.log('[FB CAPI]', JSON.stringify({ success: fbResult?.success, response: fbResult?.response, testEventCode: settings.facebook.test_event_code }))
+
                 if (fbResult?.success) {
                     await supabase.from('orders')
                         .update({ sent_to_facebook: true })
