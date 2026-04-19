@@ -5,6 +5,8 @@ const ALLOWED_ORIGINS = [
   'https://haloagency.cz',
   'https://www.catcafeprague.com',
   'https://catcafeprague.com',
+  'https://www.nejbalonky.cz',
+  'https://nejbalonky.cz',
   'http://localhost:3000',
   'http://localhost:3001'
 ]

@@ -18,6 +18,20 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
         }
 
+        // Reject order webhooks on leads-only deployments
+        const { data: clientRow } = await supabase
+            .from('clients')
+            .select('settings')
+            .eq('client_id', CLIENT_ID)
+            .single()
+
+        if (['leads', 'bookings'].includes(clientRow?.settings?.client_type)) {
+            return NextResponse.json(
+                { success: false, error: 'Order webhooks are disabled for this client type' },
+                { status: 404 }
+            )
+        }
+
         const body = await request.json()
 
         // Normalize order from different platforms

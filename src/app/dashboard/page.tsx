@@ -12,7 +12,7 @@ export default async function DashboardPage() {
 
     const { data: client } = await supabase
         .from('clients')
-        .select('client_id')
+        .select('client_id, settings')
         .eq('user_id', user.id)
         .single()
 
@@ -28,5 +28,13 @@ export default async function DashboardPage() {
     // Fetch initial data for the last 30 days
     const initialData = await getDashboardData(client.client_id)
 
-    return <DashboardClient clientId={client.client_id} initialData={initialData} />
+    const clientType = client.settings?.client_type ?? 'combined'
+
+    return (
+        <DashboardClient
+            clientId={client.client_id}
+            initialData={initialData}
+            clientType={clientType}
+        />
+    )
 }

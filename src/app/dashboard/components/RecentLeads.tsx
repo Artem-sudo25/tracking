@@ -25,6 +25,7 @@ interface RecentLeadsProps {
     initialTotal: number
     startDate: string
     endDate: string
+    clientType?: 'leads' | 'bookings' | 'combined'
 }
 
 const PAGE_SIZE = 20
@@ -82,7 +83,9 @@ export function RecentLeads({
     initialTotal,
     startDate,
     endDate,
+    clientType = 'leads',
 }: RecentLeadsProps) {
+    const nounPlural = clientType === 'bookings' ? 'Bookings' : 'Leads'
     const [scope, setScope] = useState<LeadListScope>('period')
     const [leadPages, setLeadPages] = useState<Record<LeadListScope, { leads: LeadListItem[]; total: number }>>({
         period: { leads, total: initialTotal },
@@ -218,13 +221,13 @@ export function RecentLeads({
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <CardTitle>Leads</CardTitle>
+                            <CardTitle>{nounPlural}</CardTitle>
                             {isCardExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                             {isPending && <LoaderCircle className="h-4 w-4 animate-spin text-muted-foreground" />}
                         </div>
                         {isCardExpanded && (
                             <CardDescription>
-                                Showing {visibleLeads.length} of {totalLeads} leads in {scopeLabel}
+                                Showing {visibleLeads.length} of {totalLeads} {nounPlural.toLowerCase()} in {scopeLabel}
                                 {scope === 'period' ? ` (${periodLabel})` : ''}
                             </CardDescription>
                         )}

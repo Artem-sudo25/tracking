@@ -14,6 +14,9 @@ interface LeadsStatsCardsProps {
     leadsInPeriod: number
     timeLabel: string
     newLeadsCount: number
+    clientType?: 'leads' | 'bookings' | 'combined'
+    bookingRate?: number       // % — only shown for bookings type
+    sessionsInPeriod?: number  // used in booking rate subtitle
 }
 
 export function LeadsStatsCards({
@@ -22,8 +25,14 @@ export function LeadsStatsCards({
     costPerLead,
     leadsInPeriod,
     timeLabel,
-    newLeadsCount
+    newLeadsCount,
+    clientType = 'leads',
+    bookingRate,
+    sessionsInPeriod,
 }: LeadsStatsCardsProps) {
+    const isBookings = clientType === 'bookings'
+    const noun       = isBookings ? 'Booking' : 'Lead'
+    const nounPlural = isBookings ? 'Bookings' : 'Leads'
     const router = useRouter()
     const [isMarking, setIsMarking] = useState(false)
 
@@ -44,20 +53,20 @@ export function LeadsStatsCards({
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+                    <CardTitle className="text-sm font-medium">Total {nounPlural}</CardTitle>
                     <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                     <div className="text-2xl font-bold">{totalLeads}</div>
                     <p className="text-xs text-muted-foreground">
-                        {newLeadsCount} new leads
+                        {newLeadsCount} new {nounPlural.toLowerCase()}
                     </p>
                 </CardContent>
             </Card>
 
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Cost Per Lead</CardTitle>
+                    <CardTitle className="text-sm font-medium">Cost Per {noun}</CardTitle>
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -65,14 +74,14 @@ export function LeadsStatsCards({
                         {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(costPerLead)}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        Ad spend / Total leads
+                        Ad spend / Total {nounPlural.toLowerCase()}
                     </p>
                 </CardContent>
             </Card>
 
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Leads {timeLabel}</CardTitle>
+                    <CardTitle className="text-sm font-medium">{nounPlural} {timeLabel}</CardTitle>
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
@@ -83,10 +92,26 @@ export function LeadsStatsCards({
                 </CardContent>
             </Card>
 
+            {/* Booking rate card — replaces new-leads card for bookings clients */}
+            {isBookings && bookingRate !== undefined && (
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Booking Rate</CardTitle>
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{bookingRate}%</div>
+                        <p className="text-xs text-muted-foreground">
+                            {leadsInPeriod} bookings / {sessionsInPeriod ?? '?'} sessions
+                        </p>
+                    </CardContent>
+                </Card>
+            )}
+
             {newLeadsCount > 0 && (
                 <Card className="border-orange-200 bg-orange-50/50">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-orange-900">New Since Last Visit</CardTitle>
+                        <CardTitle className="text-sm font-medium text-orange-900">New {nounPlural} Since Last Visit</CardTitle>
                         <Bell className="h-4 w-4 text-orange-600 animate-pulse" />
                     </CardHeader>
                     <CardContent>

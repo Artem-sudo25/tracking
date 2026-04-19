@@ -22,17 +22,31 @@ import type { LeadsDashboardData, VisitorAnalyticsData } from '@/types/dashboard
 import { getSignalHealth } from '@/app/actions/signal-health'
 import { SignalHealth } from './SignalHealth'
 import type { SignalHealthData } from '@/types/dashboard'
+import { ExportConversions } from './ExportConversions'
+import { getBookingsMetaData } from '@/app/actions/bookings'
+import type { BookingsMetaData } from '@/app/actions/bookings'
+import { BookingsByDayChart } from './BookingsByDayChart'
+
+type ClientType = 'ecommerce' | 'leads' | 'bookings' | 'combined'
 
 interface DashboardClientProps {
   clientId: string
   initialData: DashboardData
+  clientType?: ClientType
 }
 
 type ViewType = 'leads' | 'purchases' | 'combined'
 
-export function DashboardClient({ clientId, initialData }: DashboardClientProps) {
-  // Load view preference from localStorage, default to 'combined'
+export function DashboardClient({ clientId, initialData, clientType = 'combined' }: DashboardClientProps) {
+  const isEcommerce = clientType === 'ecommerce'
+  const isLeads     = clientType === 'leads'
+  const isBookings  = clientType === 'bookings'
+
+  // Load view preference from localStorage
+  // Ecommerce → locked to purchases. Leads/Bookings → locked to leads. Others → user preference.
   const [currentView] = useState<ViewType>(() => {
+    if (isEcommerce)            return 'purchases'
+    if (isLeads || isBookings)  return 'leads'
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('dashboard_view')
       return (saved as ViewType) || 'combined'
@@ -50,6 +64,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
   const [purchasesData, setPurchasesData] = useState<DashboardData>(initialData)
   const [leadsData, setLeadsData] = useState<LeadsDashboardData | null>(null)
   const [visitorData, setVisitorData] = useState<VisitorAnalyticsData | null>(null)
+  const [bookingsMeta, setBookingsMeta] = useState<BookingsMetaData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [signalHealth, setSignalHealth] = useState<SignalHealthData | null>(null)
 
@@ -99,6 +114,13 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
           setVisitorData(results[resultsOrder.visitor] as VisitorAnalyticsData)
         }
 
+        // Fetch bookings-specific meta (day chart + booking rate) for bookings clients
+        if (isBookings) {
+          getBookingsMetaData(clientId, start, end)
+            .then(setBookingsMeta)
+            .catch(console.error)
+        }
+
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
       } finally {
@@ -107,7 +129,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
     }
 
     fetchData()
-  }, [clientId, dateRange, currentView, showLeads, showPurchases])
+  }, [clientId, dateRange, currentView, showLeads, showPurchases, isBookings])
 
   useEffect(() => {
     getSignalHealth(clientId).then(setSignalHealth).catch(console.error)
@@ -123,12 +145,14 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
           </p>
         </div>
         <div className="flex items-center space-x-2">
-          <Link href="/dashboard/leads">
-            <Button variant="outline">
-              <Presentation className="mr-2 h-4 w-4" />
-              Pipeline
-            </Button>
-          </Link>
+          {!isEcommerce && !isBookings && (
+            <Link href="/dashboard/leads">
+              <Button variant="outline">
+                <Presentation className="mr-2 h-4 w-4" />
+                Pipeline
+              </Button>
+            </Link>
+          )}
 
           <DateRangePicker
             date={dateRange}
@@ -155,6 +179,9 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
               leadsInPeriod={leadsData.stats.leadsInPeriod}
               timeLabel={leadsData.stats.timeLabel}
               newLeadsCount={leadsData.stats.newLeadsCount}
+              clientType={isBookings ? 'bookings' : 'leads'}
+              bookingRate={bookingsMeta?.bookingRate}
+              sessionsInPeriod={bookingsMeta?.sessionsInPeriod}
             />
 
             {visitorData && (
@@ -165,8 +192,18 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
             )}
 
             <div className="grid gap-4 md:grid-cols-1 mt-4">
-              <LeadsBySource data={leadsData.leadsBySource} />
+              <LeadsBySource
+                data={leadsData.leadsBySource}
+                clientType={isBookings ? 'bookings' : 'leads'}
+              />
             </div>
+
+            {/* Day-of-week chart — bookings clients only */}
+            {isBookings && bookingsMeta && (
+              <div className="mt-4">
+                <BookingsByDayChart data={bookingsMeta.byDay} />
+              </div>
+            )}
 
             <div className="grid gap-4 md:grid-cols-1 mt-4">
               <RecentLeads
@@ -176,6 +213,7 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
                 initialTotal={leadsData.recentLeadsTotal}
                 startDate={startOfDay(dateRange.from).toISOString()}
                 endDate={endOfDay(dateRange.to).toISOString()}
+                clientType={isBookings ? 'bookings' : 'leads'}
               />
             </div>
           </div>
@@ -216,6 +254,10 @@ export function DashboardClient({ clientId, initialData }: DashboardClientProps)
           <SignalHealth data={signalHealth} />
         </div>
       )}
+
+      <div className="border-t pt-8">
+        <ExportConversions clientId={clientId} clientType={clientType} />
+      </div>
 
       {isLoading && (
         <div className="fixed bottom-4 right-4 bg-background border rounded-lg px-4 py-2 shadow-lg">

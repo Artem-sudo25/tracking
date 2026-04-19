@@ -43,6 +43,20 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
         }
 
+        // Reject lead webhooks on ecommerce-only deployments
+        const { data: clientRow } = await supabase
+            .from('clients')
+            .select('settings')
+            .eq('client_id', CLIENT_ID)
+            .single()
+
+        if (clientRow?.settings?.client_type === 'ecommerce') {
+            return NextResponse.json(
+                { success: false, error: 'Lead webhooks are disabled for ecommerce clients' },
+                { status: 404 }
+            )
+        }
+
         const body = await request.json() as LeadWebhookBody
 
         // Normalize lead from different sources

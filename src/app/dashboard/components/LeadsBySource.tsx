@@ -7,9 +7,15 @@ import { cn } from '@/lib/utils'
 
 interface LeadsBySourceProps {
     data: any[]
+    clientType?: 'leads' | 'bookings' | 'combined'
 }
 
-export function LeadsBySource({ data }: LeadsBySourceProps) {
+export function LeadsBySource({ data, clientType = 'leads' }: LeadsBySourceProps) {
+    const isBookings = clientType === 'bookings'
+    const nounPlural = isBookings ? 'Bookings' : 'Leads'
+    const cpLabel    = isBookings ? 'CPB' : 'CPL'
+    const cpFullLabel = isBookings ? 'Cost Per Booking' : 'Cost Per Lead'
+
     const getCPLColor = (cpl: number) => {
         if (cpl === 0) return 'text-muted-foreground'
         if (cpl <= 200) return 'text-green-600 font-semibold'  // Excellent
@@ -20,8 +26,8 @@ export function LeadsBySource({ data }: LeadsBySourceProps) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Leads by Source</CardTitle>
-                <CardDescription>Lead generation performance by channel</CardDescription>
+                <CardTitle>{nounPlural} by Source</CardTitle>
+                <CardDescription>{nounPlural} performance by channel</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="rounded-md border">
@@ -29,9 +35,9 @@ export function LeadsBySource({ data }: LeadsBySourceProps) {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Source / Medium</TableHead>
-                                <TableHead className="text-right">Leads</TableHead>
+                                <TableHead className="text-right">{nounPlural}</TableHead>
                                 <TableHead className="text-right">Spend</TableHead>
-                                <TableHead className="text-right">CPL</TableHead>
+                                <TableHead className="text-right">{cpLabel}</TableHead>
                                 <TableHead className="text-right">Total Value</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -39,7 +45,7 @@ export function LeadsBySource({ data }: LeadsBySourceProps) {
                             {data.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={5} className="text-center text-muted-foreground">
-                                        No lead data available
+                                        No {nounPlural.toLowerCase()} data available
                                     </TableCell>
                                 </TableRow>
                             ) : (
@@ -75,7 +81,7 @@ export function LeadsBySource({ data }: LeadsBySourceProps) {
 
                 {data.length > 0 && data.some(d => d.spend > 0) && (
                     <div className="mt-4 space-y-2 text-sm">
-                        <p className="font-semibold">CPL (Cost Per Lead) Benchmarks:</p>
+                        <p className="font-semibold">{cpLabel} ({cpFullLabel}) Benchmarks:</p>
                         <div className="flex flex-wrap gap-4">
                             <div className="flex items-center gap-2">
                                 <div className="h-3 w-3 rounded-full bg-green-600"></div>
@@ -90,10 +96,12 @@ export function LeadsBySource({ data }: LeadsBySourceProps) {
                                 <span>&gt; 400 Kč (Expensive)</span>
                             </div>
                         </div>
-                        <p className="text-muted-foreground mt-2">
-                            💡 <strong>Tip:</strong> For B2B services, focus on lead quality over quantity.
-                            A 400 Kč lead that converts to a 500,000 Kč customer is excellent ROI!
-                        </p>
+                        {!isBookings && (
+                            <p className="text-muted-foreground mt-2">
+                                💡 <strong>Tip:</strong> For B2B services, focus on lead quality over quantity.
+                                A 400 Kč lead that converts to a 500,000 Kč customer is excellent ROI!
+                            </p>
+                        )}
                     </div>
                 )}
             </CardContent>
