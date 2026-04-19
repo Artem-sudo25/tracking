@@ -109,14 +109,12 @@ export function RecentOrders({ orders }: { orders: any[] }) {
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center justify-center gap-2">
-                                                    <Facebook
-                                                        className={`h-4 w-4 ${order.sent_to_facebook ? 'text-blue-500' : 'text-muted-foreground/30'}`}
-                                                        title={order.sent_to_facebook ? 'Sent to Facebook' : 'Not sent to Facebook'}
-                                                    />
-                                                    <BarChart2
-                                                        className={`h-4 w-4 ${order.sent_to_google ? 'text-orange-500' : 'text-muted-foreground/30'}`}
-                                                        title={order.sent_to_google ? 'Sent to Google' : 'Not sent to Google'}
-                                                    />
+                                                    <span title={order.sent_to_facebook ? 'Sent to Facebook' : 'Not sent to Facebook'}>
+                                                        <Facebook className={`h-4 w-4 ${order.sent_to_facebook ? 'text-blue-500' : 'text-muted-foreground/30'}`} />
+                                                    </span>
+                                                    <span title={order.sent_to_google ? 'Sent to Google' : 'Not sent to Google'}>
+                                                        <BarChart2 className={`h-4 w-4 ${order.sent_to_google ? 'text-orange-500' : 'text-muted-foreground/30'}`} />
+                                                    </span>
                                                 </div>
                                             </td>
                                         </tr>
