@@ -239,6 +239,9 @@ export function DashboardClient({ clientId, initialData, clientType = 'combined'
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
               <RevenueChart data={purchasesData.chartData} />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-1">
               <RecentOrders orders={purchasesData.recentOrders} />
             </div>
 

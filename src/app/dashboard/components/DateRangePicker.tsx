@@ -70,49 +70,23 @@ export function DateRangePicker({
             }}
             numberOfMonths={2}
           />
-          <div className="flex gap-2 p-3 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => {
-                const today = new Date()
-                const sevenDaysAgo = new Date(today)
-                sevenDaysAgo.setDate(today.getDate() - 7)
-                onDateChange({ from: sevenDaysAgo, to: today })
-                setIsOpen(false)
-              }}
-            >
-              Last 7 days
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => {
-                const today = new Date()
-                const thirtyDaysAgo = new Date(today)
-                thirtyDaysAgo.setDate(today.getDate() - 30)
-                onDateChange({ from: thirtyDaysAgo, to: today })
-                setIsOpen(false)
-              }}
-            >
-              Last 30 days
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => {
-                const today = new Date()
-                const ninetyDaysAgo = new Date(today)
-                ninetyDaysAgo.setDate(today.getDate() - 90)
-                onDateChange({ from: ninetyDaysAgo, to: today })
-                setIsOpen(false)
-              }}
-            >
-              Last 90 days
-            </Button>
+          <div className="grid grid-cols-5 gap-2 p-3 border-t">
+            {[
+              { label: 'Today', fn: () => { const d = new Date(); return { from: d, to: d } } },
+              { label: 'Yesterday', fn: () => { const d = new Date(); d.setDate(d.getDate() - 1); return { from: d, to: d } } },
+              { label: 'Last 7d', fn: () => { const t = new Date(); const f = new Date(); f.setDate(t.getDate() - 7); return { from: f, to: t } } },
+              { label: 'Last 30d', fn: () => { const t = new Date(); const f = new Date(); f.setDate(t.getDate() - 30); return { from: f, to: t } } },
+              { label: 'Last 90d', fn: () => { const t = new Date(); const f = new Date(); f.setDate(t.getDate() - 90); return { from: f, to: t } } },
+            ].map(({ label, fn }) => (
+              <Button
+                key={label}
+                variant="outline"
+                size="sm"
+                onClick={() => { onDateChange(fn()); setIsOpen(false) }}
+              >
+                {label}
+              </Button>
+            ))}
           </div>
         </PopoverContent>
       </Popover>

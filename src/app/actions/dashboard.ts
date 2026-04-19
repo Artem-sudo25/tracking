@@ -160,7 +160,7 @@ export async function getDashboardData(
             avgDaysToConvert
         },
         revenueBySource: revenueWithROI,
-        recentOrders: orders?.slice(0, 5) || [],
+        recentOrders: orders || [],
         chartData
     }
 }
