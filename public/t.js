@@ -115,13 +115,34 @@
             });
     }
 
-    // Cookiebot fires CookiebotOnConsentReady asynchronously — wait for it
-    // before reading consent so we don't incorrectly get 'denied' on a user
-    // who has already accepted analytics.
-    if (typeof window.Cookiebot !== 'undefined' && !window.Cookiebot.consent.hasResponse) {
-        window.addEventListener('CookiebotOnConsentReady', fireTracking, { once: true });
-    } else {
+    // Cookiebot loads asynchronously and may not be defined yet when this script runs.
+    // Always attach the event listener first, then decide whether to also fire immediately.
+    var hasFired = false;
+    function fireOnce() {
+        if (hasFired) return;
+        hasFired = true;
         fireTracking();
+    }
+
+    window.addEventListener('CookiebotOnConsentReady', fireOnce, { once: true });
+
+    if (typeof window.Cookiebot !== 'undefined') {
+        // Cookiebot loaded before this script — fire now if it already has a response
+        if (window.Cookiebot.consent.hasResponse) fireOnce();
+        // else hasResponse=false means banner is showing; CookiebotOnConsentReady will fire on accept
+    } else if (typeof window.CookieYes !== 'undefined') {
+        fireOnce();
+    } else {
+        try { if (localStorage.getItem('halo_cookie_consent')) fireOnce(); } catch {}
+    }
+
+    // Fallback on window load: covers (a) Cookiebot already fired before our listener was added,
+    // (b) no CMP on the page at all. By load time window.Cookiebot.consent is fully populated.
+    var onLoad = function() { setTimeout(fireOnce, 200); };
+    if (document.readyState === 'complete') {
+        onLoad();
+    } else {
+        window.addEventListener('load', onLoad, { once: true });
     }
 
 })();
