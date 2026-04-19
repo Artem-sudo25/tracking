@@ -190,6 +190,8 @@ export async function POST(request: NextRequest) {
         let fbResult = null
         let googleResult = null
 
+        console.log('[ORDER DEBUG]', JSON.stringify({ session: !!session, consent: session?.consent_status, orderId: order.external_id }))
+
         if (session && session.consent_status !== 'denied') {
             // Get client settings
             const { data: clientData } = await supabase
@@ -207,6 +209,8 @@ export async function POST(request: NextRequest) {
                 .eq('client_id', CLIENT_ID)
                 .eq('external_order_id', order.external_id)
                 .single()
+
+            console.log('[ORDER FORWARD CHECK]', JSON.stringify({ hasPixelId: !!settings.facebook?.pixel_id, hasToken: !!settings.facebook?.access_token, alreadySent: existingOrder?.sent_to_facebook }))
 
             // Facebook CAPI
             if (settings.facebook?.pixel_id && settings.facebook?.access_token && !existingOrder?.sent_to_facebook) {
