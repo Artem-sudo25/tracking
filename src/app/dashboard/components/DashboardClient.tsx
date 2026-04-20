@@ -26,6 +26,9 @@ import { ExportConversions } from './ExportConversions'
 import { getBookingsMetaData } from '@/app/actions/bookings'
 import type { BookingsMetaData } from '@/app/actions/bookings'
 import { BookingsByDayChart } from './BookingsByDayChart'
+import { getEcommerceVisitorData } from '@/app/actions/ecommerce-visitors'
+import type { EcommerceVisitorData } from '@/app/actions/ecommerce-visitors'
+import { EcommerceVisitors } from './EcommerceVisitors'
 
 type ClientType = 'ecommerce' | 'leads' | 'bookings' | 'combined'
 
@@ -65,6 +68,7 @@ export function DashboardClient({ clientId, initialData, clientType = 'combined'
   const [leadsData, setLeadsData] = useState<LeadsDashboardData | null>(null)
   const [visitorData, setVisitorData] = useState<VisitorAnalyticsData | null>(null)
   const [bookingsMeta, setBookingsMeta] = useState<BookingsMetaData | null>(null)
+  const [ecommerceVisitors, setEcommerceVisitors] = useState<EcommerceVisitorData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [signalHealth, setSignalHealth] = useState<SignalHealthData | null>(null)
 
@@ -86,12 +90,17 @@ export function DashboardClient({ clientId, initialData, clientType = 'combined'
         purchases: -1,
         leads: -1,
         visitor: -1,
+        ecomVisitors: -1,
       }
       let nextIndex = 0;
 
       if (showPurchases) {
         promises.push(getDashboardData(clientId, start, end))
         resultsOrder.purchases = nextIndex++;
+        if (isEcommerce) {
+          promises.push(getEcommerceVisitorData(clientId, start, end))
+          resultsOrder.ecomVisitors = nextIndex++;
+        }
       }
 
       if (showLeads) {
@@ -112,6 +121,9 @@ export function DashboardClient({ clientId, initialData, clientType = 'combined'
         }
         if (resultsOrder.visitor !== -1) {
           setVisitorData(results[resultsOrder.visitor] as VisitorAnalyticsData)
+        }
+        if (resultsOrder.ecomVisitors !== -1) {
+          setEcommerceVisitors(results[resultsOrder.ecomVisitors] as EcommerceVisitorData)
         }
 
         // Fetch bookings-specific meta (day chart + booking rate) for bookings clients
@@ -230,6 +242,13 @@ export function DashboardClient({ clientId, initialData, clientType = 'combined'
             {currentView === 'combined' && (
               <h3 className="text-2xl font-bold">Purchases</h3>
             )}
+            {isEcommerce && ecommerceVisitors && (
+              <div className="mb-8">
+                <h4 className="text-xl font-bold mb-4">Visitor Analytics</h4>
+                <EcommerceVisitors data={ecommerceVisitors} />
+              </div>
+            )}
+
             <StatsCards
               totalRevenue={purchasesData.stats.totalRevenue}
               totalOrders={purchasesData.stats.totalOrders}
