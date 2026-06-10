@@ -1,6 +1,7 @@
 // lib/forwarding/facebook.ts
 
 import type { FacebookParams, ForwardingResult } from '@/types'
+import { sha256, normalizePhoneDigits, fbEventsUrl } from './shared'
 
 export async function sendToFacebook(params: FacebookParams): Promise<ForwardingResult> {
     const { session, order, eventId, pixelId, accessToken, testEventCode } = params
@@ -10,7 +11,7 @@ export async function sendToFacebook(params: FacebookParams): Promise<Forwarding
     try {
         // Hash user data (Facebook requires SHA256)
         const hashedEmail = order.email ? await sha256(order.email.toLowerCase().trim()) : null
-        const hashedPhone = order.phone ? await sha256(normalizePhone(order.phone)) : null
+        const hashedPhone = order.phone ? await sha256(normalizePhoneDigits(order.phone, session.country)) : null
         const hashedCountry = session.country ? await sha256(session.country.toLowerCase()) : null
         const hashedCity = session.city ? await sha256(session.city.toLowerCase().replace(/\s/g, '')) : null
 
@@ -27,7 +28,10 @@ export async function sendToFacebook(params: FacebookParams): Promise<Forwarding
                     ph: hashedPhone ? [hashedPhone] : undefined,
                     fbc: session.fbc || undefined,
                     fbp: session.fbp || undefined,
-                    client_ip_address: session.ip_hash || undefined,
+                    // Meta requires the real IP — a hash is discarded as unparseable.
+                    // Order-level IP (captured at checkout, e.g. by the Woo plugin)
+                    // beats the session IP captured at first touch.
+                    client_ip_address: order.ip_address || session.ip_address || undefined,
                     client_user_agent: session.user_agent || undefined,
                     country: hashedCountry ? [hashedCountry] : undefined,
                     ct: hashedCity ? [hashedCity] : undefined,
@@ -50,7 +54,7 @@ export async function sendToFacebook(params: FacebookParams): Promise<Forwarding
         }
 
         const response = await fetch(
-            `https://graph.facebook.com/v18.0/${pixelId}/events?access_token=${accessToken}`,
+            fbEventsUrl(pixelId, accessToken),
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -70,17 +74,4 @@ export async function sendToFacebook(params: FacebookParams): Promise<Forwarding
         console.error('Facebook CAPI error:', error)
         return { success: false, error, payload }
     }
-}
-
-async function sha256(str: string): Promise<string> {
-    const encoder = new TextEncoder()
-    const data = encoder.encode(str)
-    const hash = await crypto.subtle.digest('SHA-256', data)
-    return Array.from(new Uint8Array(hash))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('')
-}
-
-function normalizePhone(phone: string): string {
-    return phone.replace(/\D/g, '')
 }

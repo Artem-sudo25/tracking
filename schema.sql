@@ -76,6 +76,7 @@ CREATE TABLE sessions (
   
   -- Geo
   ip_hash TEXT,
+  ip_address TEXT, -- real visitor IP (Meta CAPI requires unhashed client_ip_address)
   country TEXT,
   city TEXT,
   region TEXT,
@@ -90,6 +91,10 @@ CREATE TABLE sessions (
   
   -- GA4 Client ID (for Measurement Protocol matching)
   ga_client_id TEXT,
+
+  -- GA4 Session ID from the _ga_<container> cookie (for MP session stitching;
+  -- without it server-side conversions report as "Unassigned" in GA4)
+  ga_session_id TEXT,
 
   -- Consent
   consent_status TEXT DEFAULT 'unknown',

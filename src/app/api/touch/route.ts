@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendPageViewToFacebook } from '@/lib/forwarding/facebook-pageview'
-import { sendPageViewToGoogle } from '@/lib/forwarding/google-pageview'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,9 +27,14 @@ interface SessionTouchUpdate {
     ttclid?: string | null
     msclkid?: string | null
     custom_params?: Record<string, string>
+    ga_session_id?: string | null
+    ip_address?: string | null
+    consent_status?: string
 }
 
 export async function POST(request: NextRequest) {
+    // Correlation id: lets a client-side failure be matched to a server log line
+    const requestId = crypto.randomUUID().slice(0, 8)
     try {
         const body = await request.json()
 
@@ -52,6 +55,14 @@ export async function POST(request: NextRequest) {
 
         // === CONSENT DENIED ===
         if (consentStatus === 'denied') {
+            // If a session exists from before the visitor denied (e.g. consent
+            // revoked after page load), record the denial so forwarding stops.
+            if (sessionId) {
+                await supabase.from('sessions')
+                    .update({ consent_status: 'denied', updated_at: new Date().toISOString() })
+                    .eq('session_id', sessionId)
+                    .eq('client_id', CLIENT_ID)
+            }
             if (body.utm_source || body.referrer) {
                 await supabase.from('anon_events').insert({
                     client_id: CLIENT_ID,
@@ -171,11 +182,14 @@ export async function POST(request: NextRequest) {
                 os_version: device.osVersion,
 
                 ip_hash: ipHash,
+                // Raw IP kept for Meta CAPI — client_ip_address must be unhashed
+                ip_address: ip === 'unknown' ? null : ip,
                 country,
                 city,
 
                 language: request.headers.get('accept-language')?.split(',')[0] || 'unknown',
                 ga_client_id: body.ga_client_id || null,
+                ga_session_id: body.ga_session_id || null,
                 custom_params: customParams,
             })
         } else if (hasTouchData) {
@@ -194,6 +208,7 @@ export async function POST(request: NextRequest) {
 
             if (country) updateData.country = country
             if (city) updateData.city = city
+            if (ip !== 'unknown') updateData.ip_address = ip
             if (body.gclid) updateData.gclid = body.gclid
             if (body.fbclid) updateData.fbclid = body.fbclid
             if (fbc) updateData.fbc = fbc
@@ -202,11 +217,22 @@ export async function POST(request: NextRequest) {
             if (body.msclkid) updateData.msclkid = body.msclkid
             if (Object.keys(customParams).length > 0) updateData.custom_params = customParams
             if (body.ga_client_id) (updateData as any).ga_client_id = body.ga_client_id
+            if (body.ga_session_id) updateData.ga_session_id = body.ga_session_id
+            if (consentStatus === 'granted') updateData.consent_status = 'granted'
 
             await supabase.from('sessions')
                 .update(updateData)
                 .eq('session_id', sessionId)
                 .eq('client_id', CLIENT_ID)
+        } else if (consentStatus === 'granted') {
+            // No new marketing data, but consent may have been granted after
+            // page load (banner accepted) — upgrade unknown → granted so
+            // conversions on this session can forward.
+            await supabase.from('sessions')
+                .update({ consent_status: 'granted', updated_at: new Date().toISOString() })
+                .eq('session_id', sessionId)
+                .eq('client_id', CLIENT_ID)
+                .neq('consent_status', 'granted')
         }
 
         // === RECORD TOUCHPOINT (JOURNEY) ===
@@ -243,50 +269,11 @@ export async function POST(request: NextRequest) {
             })
         }
 
-        // === FORWARD TO FACEBOOK (SERVER-SIDE PAGEVIEW) ===
-        if (consentStatus === 'granted') {
-            const { data: clientData } = await supabase
-                .from('clients')
-                .select('settings')
-                .eq('client_id', CLIENT_ID)
-                .single()
-
-            const settings = clientData?.settings || {}
-
-            if (settings.facebook?.pixel_id && settings.facebook?.access_token) {
-                // Construct session object for forwarding
-                const sessionForFb = {
-                    fbc: fbc || undefined,
-                    fbp: fbp || undefined,
-                    ip_hash: ipHash,
-                    user_agent: userAgent,
-                    country: country,
-                    city: city,
-                    ft_landing: touch.landing,
-                    lt_landing: touch.landing
-                }
-
-                await sendPageViewToFacebook({
-                    session: sessionForFb,
-                    url: body.referrer || body.landing,
-                    eventId: `${CLIENT_ID}_pv_${sessionId}_${Date.now()}`,
-                    pixelId: settings.facebook.pixel_id,
-                    accessToken: settings.facebook.access_token,
-                    testEventCode: settings.facebook.test_event_code
-                })
-            }
-
-            // Google Analytics 4 (Server-Side)
-            if (settings.google?.measurement_id && settings.google?.api_secret) {
-                // Fire and forget
-                await sendPageViewToGoogle({
-                    session: { session_id: sessionId, ga_client_id: body.ga_client_id, user_id: request.cookies.get('user_id')?.value },
-                    url: body.referrer || body.landing,
-                    measurementId: settings.google.measurement_id,
-                    apiSecret: settings.google.api_secret
-                })
-            }
-        }
+        // NOTE: server-side PageView forwarding removed (2026-06-10). The browser
+        // Meta Pixel and GTM GA4 tag already fire PageView; the server copies used
+        // timestamp-based event IDs that could never deduplicate against them, so
+        // both platforms double-counted every page load. Conversions (Lead/Purchase)
+        // remain server-forwarded with deterministic event IDs.
 
         // Return session_id so client can store it
         const response = NextResponse.json({ session_id: sessionId })
@@ -329,8 +316,8 @@ export async function POST(request: NextRequest) {
         return response
 
     } catch (error) {
-        console.error('Touch error:', error)
-        return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 })
+        console.error(`[Touch] [${requestId}] error:`, error)
+        return NextResponse.json({ success: false, error: 'Internal error', request_id: requestId }, { status: 500 })
     }
 }
 

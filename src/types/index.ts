@@ -72,6 +72,7 @@ export interface Session {
 
   // Geo
   ip_hash: string | null
+  ip_address: string | null
   country: string | null
   city: string | null
   region: string | null
@@ -86,6 +87,9 @@ export interface Session {
 
   // GA4 Client ID (for Measurement Protocol matching)
   ga_client_id: string | null
+
+  // GA4 Session ID from the _ga_<container> cookie (for MP session stitching)
+  ga_session_id: string | null
 
   // Consent
   consent_status: 'granted' | 'denied' | 'unknown'
@@ -223,6 +227,7 @@ export interface NormalizedOrder {
   customer_id: string | null
   session_id: string | null
   items: OrderItem[] | null
+  ip_address: string | null
 }
 
 export interface FacebookParams {

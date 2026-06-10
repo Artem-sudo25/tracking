@@ -1,0 +1,5 @@
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteCond %{HTTP_HOST} ^peru-mole-473733\.hostingersite\.com$ [NC]
+RewriteRule ^(.*)$ https://nejbalonky.cz/$1 [R=301,L,QSA]
+</IfModule>

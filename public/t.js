@@ -2,10 +2,6 @@
 // HaloTrack Loader - Add to external sites
 
 (function () {
-    // Replace with your actual site URL in production or use a variable
-    // For now we assume the script is served from the same domain or we use a relative path if possible, 
-    // but for external sites it needs the full URL. 
-    // We'll use a placeholder that needs to be replaced or configured.
     var SITE_URL = document.currentScript ? new URL(document.currentScript.src).origin : '';
 
     var ENDPOINT = SITE_URL + '/api/touch';
@@ -16,6 +12,58 @@
         var match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
         return match ? match[2] : null;
     }
+
+    function post(endpoint, body) {
+        return fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            keepalive: true,
+            body: JSON.stringify(body)
+        });
+    }
+
+    // --- Public API ---
+    // Defined BEFORE any network call so forms can always reach it. If /api/touch
+    // fails, getSessionId() still works off the _halo cookie from a prior visit,
+    // and identify/track calls queue until the touch call settles.
+    var ready = false;
+    var pending = [];
+
+    function apiCall(endpoint, body) {
+        if (!ready) {
+            return new Promise(function (resolve, reject) {
+                pending.push({ endpoint: endpoint, body: body, resolve: resolve, reject: reject });
+            });
+        }
+        return post(endpoint, body);
+    }
+
+    function flushPending() {
+        ready = true;
+        pending.splice(0).forEach(function (item) {
+            post(item.endpoint, item.body).then(item.resolve, item.reject);
+        });
+    }
+
+    window.HaloTrack = {
+        sessionId: getCookie('_halo') || null,
+
+        getSessionId: function () {
+            return this.sessionId || getCookie('_halo');
+        },
+
+        identify: function (userData) {
+            return apiCall(IDENTIFY_ENDPOINT, userData);
+        },
+
+        track: function (eventName, properties) {
+            return apiCall(EVENT_ENDPOINT, {
+                event_name: eventName,
+                properties: properties
+            });
+        }
+    };
 
     // Parse URL params
     var params = new URLSearchParams(window.location.search);
@@ -44,6 +92,20 @@
             var parts = ga.split('.');
             return parts.length >= 4 ? parts.slice(2).join('.') : ga;
         })(),
+        ga_session_id: (function() {
+            // _ga_<CONTAINER> cookie holds GA4's own session id. Needed for
+            // Measurement Protocol session stitching — without it server-side
+            // conversions report as "Unassigned" in GA4.
+            //   GS1.1.1719930000.5.1.1719930100.0.0.0   → 3rd segment
+            //   GS2.1.s1719930000$o5$g1$t1719930100$j0  → digits after "s"
+            var m = document.cookie.match(/(?:^|;\s*)_ga_[^=]+=([^;]+)/);
+            if (!m) return null;
+            var v = m[1];
+            var s2 = v.match(/^GS\d+\.\d+\.s(\d+)/);
+            if (s2) return s2[1];
+            var parts = v.split('.');
+            return (parts.length >= 3 && /^\d+$/.test(parts[2])) ? parts[2] : null;
+        })(),
         navigation_type: (typeof PerformanceNavigationTiming !== 'undefined' &&
             performance.getEntriesByType('navigation')[0])
             ? performance.getEntriesByType('navigation')[0].type
@@ -68,50 +130,29 @@
         return 'unknown';
     }
 
-    function fireTracking() {
+    // Touch call with retry: a single flaky request on mobile must not cost
+    // the session. Retries twice (1s, 4s), then gives up but still unblocks
+    // queued identify/track calls (the cookie session may still be valid).
+    function postTouch(attempt) {
         data.consent = getConsent();
 
-        fetch(ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(data)
-        })
+        post(ENDPOINT, data)
             .then(function (r) { return r.json(); })
             .then(function (result) {
-                window.HaloTrack = {
-                    sessionId: result.session_id,
-
-                    getSessionId: function () {
-                        return this.sessionId || getCookie('_halo');
-                    },
-
-                    identify: function (userData) {
-                        return fetch(IDENTIFY_ENDPOINT, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'include',
-                            body: JSON.stringify(userData)
-                        });
-                    },
-
-                    track: function (eventName, properties) {
-                        return fetch(EVENT_ENDPOINT, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'include',
-                            body: JSON.stringify({
-                                event_name: eventName,
-                                properties: properties
-                            })
-                        });
-                    }
-                };
-
+                if (result && result.session_id) {
+                    window.HaloTrack.sessionId = result.session_id;
+                }
+                flushPending();
                 window.dispatchEvent(new CustomEvent('halotrack:ready'));
             })
             .catch(function (err) {
-                console.error('HaloTrack error:', err);
+                if (attempt < 2) {
+                    setTimeout(function () { postTouch(attempt + 1); }, attempt === 0 ? 1000 : 4000);
+                } else {
+                    console.error('HaloTrack error:', err);
+                    flushPending();
+                    window.dispatchEvent(new CustomEvent('halotrack:ready'));
+                }
             });
     }
 
@@ -121,10 +162,22 @@
     function fireOnce() {
         if (hasFired) return;
         hasFired = true;
-        fireTracking();
+        postTouch(0);
     }
 
     window.addEventListener('CookiebotOnConsentReady', fireOnce, { once: true });
+
+    // Custom banner support: the site dispatches `halo:consent-changed` after
+    // saving halo_cookie_consent. First choice fires tracking; a change after
+    // the initial fire re-sends the touch so the session's consent updates.
+    window.addEventListener('halo:consent-changed', function () {
+        if (!hasFired) {
+            fireOnce();
+        } else {
+            data.consent = getConsent();
+            post(ENDPOINT, data).catch(function () {});
+        }
+    });
 
     if (typeof window.Cookiebot !== 'undefined') {
         // Cookiebot loaded before this script — fire now if it already has a response

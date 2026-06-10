@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ChevronDown, ChevronRight, Facebook, BarChart2 } from 'lucide-react'
 import { format } from 'date-fns'
+import { JourneyTimeline } from './JourneyTimeline'
 
 const PAGE_SIZES = [10, 25, 50, 100]
 
@@ -20,7 +21,7 @@ function fmt(amount: number, currency = 'CZK') {
     return new Intl.NumberFormat('cs-CZ', { style: 'currency', currency }).format(amount)
 }
 
-export function RecentOrders({ orders }: { orders: any[] }) {
+export function RecentOrders({ clientId, orders }: { clientId: string; orders: any[] }) {
     const [expanded, setExpanded] = useState<Set<string>>(new Set())
     const [page, setPage] = useState(0)
     const [pageSize, setPageSize] = useState(25)
@@ -200,6 +201,18 @@ export function RecentOrders({ orders }: { orders: any[] }) {
                                                         </div>
 
                                                     </div>
+
+                                                    {order.session_id && (
+                                                        <div className="mt-6 pt-4 border-t">
+                                                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Journey</p>
+                                                            <JourneyTimeline
+                                                                clientId={clientId}
+                                                                sessionId={order.session_id}
+                                                                conversionLabel={`Purchase #${order.external_order_id}`}
+                                                                convertedAt={order.created_at}
+                                                            />
+                                                        </div>
+                                                    )}
                                                 </td>
                                             </tr>
                                         )}

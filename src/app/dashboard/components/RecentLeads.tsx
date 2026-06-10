@@ -18,6 +18,7 @@ import {
     Phone,
 } from 'lucide-react'
 import type { LeadClickIds, LeadListItem, LeadListScope, LeadTouchData } from '@/types/dashboard'
+import { JourneyTimeline } from './JourneyTimeline'
 
 interface RecentLeadsProps {
     clientId: string
@@ -456,6 +457,18 @@ export function RecentLeads({
                                                                 <span>{lead.attribution_data.device.country}</span>
                                                             </div>
                                                         )}
+                                                    </div>
+                                                )}
+
+                                                {lead.attribution_data?.session_id && (
+                                                    <div className="space-y-2 border-t pt-3">
+                                                        <p className="text-xs font-medium text-muted-foreground">Journey</p>
+                                                        <JourneyTimeline
+                                                            clientId={clientId}
+                                                            sessionId={lead.attribution_data.session_id}
+                                                            conversionLabel={clientType === 'bookings' ? 'Booking submitted' : 'Lead submitted'}
+                                                            convertedAt={lead.created_at}
+                                                        />
                                                     </div>
                                                 )}
 

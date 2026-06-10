@@ -131,6 +131,47 @@ export async function GET(request: NextRequest) {
         rate: parseFloat(unmatchedRate.toFixed(3)),
       })
     }
+
+    // --- Retry queue health ---
+    // Dead items exhausted all 6 retries (~38h) and need manual intervention;
+    // keep alerting until someone resolves them.
+    const { count: deadCount } = await supabase
+      .from('forwarding_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_id', client.client_id)
+      .eq('status', 'dead')
+
+    if ((deadCount ?? 0) > 0) {
+      alerts.push({
+        client: client.name,
+        client_id: client.client_id,
+        severity: 'critical',
+        type: 'dead_queue_items',
+        message: `${deadCount} conversion(s) permanently failed to forward (retry queue: dead) — needs manual fix`,
+        current: deadCount ?? 0,
+      })
+    }
+
+    // Pending items older than 2h mean retries keep failing — systemic
+    // (bad credentials, API outage), not a transient blip.
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000)
+    const { count: stuckCount } = await supabase
+      .from('forwarding_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_id', client.client_id)
+      .eq('status', 'pending')
+      .lt('created_at', twoHoursAgo.toISOString())
+
+    if ((stuckCount ?? 0) > 0) {
+      alerts.push({
+        client: client.name,
+        client_id: client.client_id,
+        severity: 'warning',
+        type: 'stuck_pending_retries',
+        message: `${stuckCount} forwarding retr${(stuckCount ?? 0) === 1 ? 'y' : 'ies'} pending for over 2h — check credentials / platform status`,
+        current: stuckCount ?? 0,
+      })
+    }
   }
 
   if (alerts.length > 0 && process.env.N8N_WEBHOOK_URL) {

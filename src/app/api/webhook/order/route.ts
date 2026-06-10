@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { sendToFacebook } from '@/lib/forwarding/facebook'
 import { sendToGoogle } from '@/lib/forwarding/google'
 import { enqueueFailedForwarding } from '@/lib/forwarding/queue'
+import { verifyWebhook } from '@/lib/webhook-auth'
+import { normalizeOrder, normalizePhone } from '@/lib/normalize'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,9 +14,13 @@ const supabase = createClient(
 const CLIENT_ID = process.env.CLIENT_ID!
 
 export async function POST(request: NextRequest) {
+    // Correlation id: ties an error response, its log line and any queued
+    // retry back to one specific webhook delivery
+    const requestId = crypto.randomUUID().slice(0, 8)
     try {
-        const secret = request.headers.get('x-webhook-secret')
-        if (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET) {
+        // Raw body needed for HMAC verification — parse after auth
+        const rawBody = await request.text()
+        if (!(await verifyWebhook(request, rawBody))) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
         }
 
@@ -32,7 +38,7 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const body = await request.json()
+        const body = JSON.parse(rawBody)
 
         // Normalize order from different platforms
         const order = normalizeOrder(body)
@@ -231,7 +237,7 @@ export async function POST(request: NextRequest) {
                         eventId: order.external_id,
                         platform: 'facebook',
                         payload: fbResult.payload,
-                        error: String(fbResult.response?.error?.message || fbResult.error || 'unknown'),
+                        error: `[${requestId}] ${String(fbResult.response?.error?.message || fbResult.error || 'unknown')}`,
                     })
                 }
             }
@@ -257,7 +263,7 @@ export async function POST(request: NextRequest) {
                         eventId: order.external_id,
                         platform: 'google',
                         payload: googleResult.payload,
-                        error: String(googleResult.error || 'unknown'),
+                        error: `[${requestId}] ${String(googleResult.error || 'unknown')}`,
                     })
                 }
             }
@@ -274,84 +280,10 @@ export async function POST(request: NextRequest) {
         })
 
     } catch (error) {
-        console.error('Webhook error:', error)
+        console.error(`[Order Webhook] [${requestId}] error:`, error)
         return NextResponse.json(
-            { success: false, error: 'Internal error' },
+            { success: false, error: 'Internal error', request_id: requestId },
             { status: 500 }
         )
     }
-}
-
-// Normalize orders from different platforms
-function normalizeOrder(body: any) {
-    // WooCommerce format
-    if (body.billing || body.line_items) {
-        return {
-            external_id: String(body.id || body.order_id),
-            platform: 'woocommerce',
-            total: parseFloat(body.total || 0),
-            subtotal: parseFloat(body.subtotal || 0),
-            tax: parseFloat(body.total_tax || 0),
-            shipping: parseFloat(body.shipping_total || 0),
-            currency: body.currency || 'CZK',
-            email: body.billing?.email?.toLowerCase(),
-            phone: body.billing?.phone,
-            customer_id: body.customer_id ? String(body.customer_id) : null,
-            session_id: body.meta_data?.find((m: any) => m.key === '_halo_session')?.value ||
-                body.halo_session_id,
-            items: body.line_items?.map((item: any) => ({
-                id: String(item.product_id),
-                name: item.name,
-                price: parseFloat(item.price),
-                quantity: item.quantity,
-            })),
-        }
-    }
-
-    // Shopify format
-    if (body.checkout_token || body.order_number) {
-        const haloAttr = body.note_attributes?.find((a: any) =>
-            a.name === 'halo_session_id' || a.name === '_halo_session'
-        )
-
-        return {
-            external_id: String(body.id || body.order_number),
-            platform: 'shopify',
-            total: parseFloat(body.total_price || 0),
-            subtotal: parseFloat(body.subtotal_price || 0),
-            tax: parseFloat(body.total_tax || 0),
-            shipping: parseFloat(body.total_shipping_price_set?.shop_money?.amount || 0),
-            currency: body.currency || 'CZK',
-            email: body.email?.toLowerCase() || body.customer?.email?.toLowerCase(),
-            phone: body.phone || body.customer?.phone,
-            customer_id: body.customer?.id ? String(body.customer.id) : null,
-            session_id: haloAttr?.value,
-            items: body.line_items?.map((item: any) => ({
-                id: String(item.product_id),
-                name: item.title,
-                price: parseFloat(item.price),
-                quantity: item.quantity,
-            })),
-        }
-    }
-
-    // Custom/generic format
-    return {
-        external_id: String(body.order_id || body.id),
-        platform: body.platform || 'custom',
-        total: parseFloat(body.total || body.total_amount || 0),
-        subtotal: parseFloat(body.subtotal || 0),
-        tax: parseFloat(body.tax || 0),
-        shipping: parseFloat(body.shipping || 0),
-        currency: body.currency || 'CZK',
-        email: body.email?.toLowerCase() || body.customer_email?.toLowerCase(),
-        phone: body.phone || body.customer_phone,
-        customer_id: body.customer_id,
-        session_id: body.session_id || body.halo_session_id,
-        items: body.items,
-    }
-}
-
-function normalizePhone(phone: string): string {
-    return phone.replace(/\D/g, '')
 }

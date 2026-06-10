@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HaloTrack for WooCommerce
  * Description: First-party attribution tracking for WooCommerce. Captures UTM/click IDs per session and forwards order conversions to Meta CAPI and Google Measurement Protocol via HaloTrack.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Requires at least: 6.0
  * Requires PHP: 8.0
  * WC requires at least: 7.0
@@ -124,7 +124,8 @@ add_action( 'wp_enqueue_scripts', function () {
             }
 
             // Set on HaloTrack ready + DOM ready
-            document.addEventListener('halotrack:ready', setHaloSessionId);
+            // (t.js dispatches halotrack:ready on window — it does not bubble to document)
+            window.addEventListener('halotrack:ready', setHaloSessionId);
             document.addEventListener('DOMContentLoaded', setHaloSessionId);
 
             // Re-set after every WooCommerce AJAX checkout refresh
@@ -314,8 +315,9 @@ function halotrack_forward_order( int $order_id ): void {
         'meta_data'      => [
             [ 'key' => '_halo_session', 'value' => $session_id ?: '' ],
         ],
-        // Pass customer IP explicitly so HaloTrack can geo-resolve it
-        // (webhook fires server-to-server, so request IP would be Hostinger's)
+        // Checkout-time visitor IP — HaloTrack forwards it to Meta CAPI as
+        // client_ip_address (webhook fires server-to-server, so the request
+        // IP would be Hostinger's, not the customer's)
         'customer_ip'    => $customer_ip ?: '',
     ];
 

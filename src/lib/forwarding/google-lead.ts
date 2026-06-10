@@ -1,5 +1,7 @@
 // lib/forwarding/google-lead.ts
 
+import { sha256, normalizePhoneE164 } from './shared'
+
 interface GoogleLeadParams {
     session: any
     lead: any
@@ -14,7 +16,8 @@ export async function sendLeadToGoogle(params: GoogleLeadParams) {
 
     try {
         const hashedEmail = lead.email ? await sha256(lead.email.toLowerCase().trim()) : null
-        const hashedPhone = lead.phone ? await sha256(normalizePhone(lead.phone)) : null
+        // Google requires E.164 before hashing — bare digits never match
+        const hashedPhone = lead.phone ? await sha256(normalizePhoneE164(lead.phone, session.country)) : null
 
         payload = {
             client_id: session.ga_client_id || session.session_id,
@@ -25,8 +28,11 @@ export async function sendLeadToGoogle(params: GoogleLeadParams) {
                     currency: lead.currency || 'CZK',
                     form_type: lead.form_type || 'contact',
                     transaction_id: lead.external_id,
-                    ...(session.gclid ? { gclid: session.gclid } : {}),
-                    ...(session.session_id ? { session_id: session.session_id } : {}),
+                    engagement_time_msec: 1,
+                    // GA4's own session id (from the _ga_<container> cookie) —
+                    // without it the event has no acquisition context and
+                    // reports as "Unassigned"
+                    ...(session.ga_session_id ? { session_id: session.ga_session_id } : {}),
                 },
             }],
             user_data: {
@@ -52,17 +58,4 @@ export async function sendLeadToGoogle(params: GoogleLeadParams) {
         console.error('Google Lead error:', error)
         return { success: false, error, payload }
     }
-}
-
-async function sha256(str: string): Promise<string> {
-    const encoder = new TextEncoder()
-    const data = encoder.encode(str)
-    const hash = await crypto.subtle.digest('SHA-256', data)
-    return Array.from(new Uint8Array(hash))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('')
-}
-
-function normalizePhone(phone: string): string {
-    return phone.replace(/\D/g, '')
 }

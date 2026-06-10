@@ -1,5 +1,7 @@
 // lib/forwarding/facebook-lead.ts
 
+import { sha256, normalizePhoneDigits, fbEventsUrl } from './shared'
+
 interface FacebookLeadSession {
     country?: string | null
     city?: string | null
@@ -40,7 +42,7 @@ export async function sendLeadToFacebook(params: FacebookLeadParams) {
 
         // Hash user data (Facebook requires SHA256)
         const hashedEmail = lead.email ? await sha256(lead.email.toLowerCase().trim()) : null
-        const hashedPhone = lead.phone ? await sha256(normalizePhone(lead.phone)) : null
+        const hashedPhone = lead.phone ? await sha256(normalizePhoneDigits(lead.phone, session.country)) : null
         const hashedFirstName = firstName ? await sha256(firstName) : null
         const hashedLastName = lastNameParts.length > 0 ? await sha256(lastNameParts.join(' ')) : null
         const hashedCountry = session.country ? await sha256(session.country.toLowerCase()) : null
@@ -78,7 +80,7 @@ export async function sendLeadToFacebook(params: FacebookLeadParams) {
         }
 
         const response = await fetch(
-            `https://graph.facebook.com/v18.0/${pixelId}/events?access_token=${accessToken}`,
+            fbEventsUrl(pixelId, accessToken),
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -98,17 +100,4 @@ export async function sendLeadToFacebook(params: FacebookLeadParams) {
         console.error('Facebook Lead CAPI error:', error)
         return { success: false, error, payload }
     }
-}
-
-async function sha256(str: string): Promise<string> {
-    const encoder = new TextEncoder()
-    const data = encoder.encode(str)
-    const hash = await crypto.subtle.digest('SHA-256', data)
-    return Array.from(new Uint8Array(hash))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('')
-}
-
-function normalizePhone(phone: string): string {
-    return phone.replace(/\D/g, '')
 }

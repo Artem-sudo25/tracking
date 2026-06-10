@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Claude Code worktrees and archived debug material
+    ".claude/**",
+    "nejbalonky-debug/**",
   ]),
 ]);
 

@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { sendLeadToFacebook } from '@/lib/forwarding/facebook-lead'
 import { sendLeadToGoogle } from '@/lib/forwarding/google-lead'
 import { enqueueFailedForwarding } from '@/lib/forwarding/queue'
+import { verifyWebhook } from '@/lib/webhook-auth'
+import { normalizeLead, normalizePhone, type LeadWebhookBody } from '@/lib/normalize'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,35 +13,14 @@ const supabase = createClient(
 
 const CLIENT_ID = process.env.CLIENT_ID!
 
-interface LeadWebhookBody {
-    lead_id?: string
-    id?: string
-    source?: string
-    email?: string
-    phone?: string
-    name?: string
-    first_name?: string
-    last_name?: string
-    company?: string
-    form_type?: string
-    message?: string
-    comments?: string
-    value?: number | string
-    lead_value?: number | string
-    currency?: string
-    custom_fields?: Record<string, unknown>
-    session_id?: string
-    halo_session_id?: string
-    consent_given?: boolean
-    gdpr_consent?: boolean
-    ip_address?: string
-    created_at?: string
-}
-
 export async function POST(request: NextRequest) {
+    // Correlation id: ties an error response, its log line and any queued
+    // retry back to one specific webhook delivery
+    const requestId = crypto.randomUUID().slice(0, 8)
     try {
-        const secret = request.headers.get('x-webhook-secret')
-        if (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET) {
+        // Raw body needed for HMAC verification — parse after auth
+        const rawBody = await request.text()
+        if (!(await verifyWebhook(request, rawBody))) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
         }
 
@@ -57,13 +38,10 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const body = await request.json() as LeadWebhookBody
+        const body = JSON.parse(rawBody) as LeadWebhookBody
 
         // Normalize lead from different sources
         const lead = normalizeLead(body)
-        if (!lead.ip_address) {
-            lead.ip_address = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null
-        }
 
         // === ATTRIBUTION MATCHING ===
         let session = null
@@ -117,6 +95,14 @@ export async function POST(request: NextRequest) {
                 session = data
                 matchType = 'phone'
             }
+        }
+
+        // Visitor IP for Meta match quality: prefer the IP the client site
+        // captured from the visitor's request; fall back to the matched
+        // session's stored IP. Never use this webhook's own x-forwarded-for —
+        // server-to-server it's the website server's IP, not the visitor's.
+        if (!lead.ip_address) {
+            lead.ip_address = session?.ip_address || null
         }
 
         // Calculate days to convert (use lead's own date if provided, not server time)
@@ -251,7 +237,7 @@ export async function POST(request: NextRequest) {
                         eventId,
                         platform: 'facebook',
                         payload: fbResult.payload,
-                        error: String(fbResult.response?.error?.message || fbResult.error || 'unknown'),
+                        error: `[${requestId}] ${String(fbResult.response?.error?.message || fbResult.error || 'unknown')}`,
                     })
                 }
             } else {
@@ -280,7 +266,7 @@ export async function POST(request: NextRequest) {
                         eventId,
                         platform: 'google',
                         payload: googleResult.payload,
-                        error: String(googleResult.error || 'unknown'),
+                        error: `[${requestId}] ${String(googleResult.error || 'unknown')}`,
                     })
                 }
             } else {
@@ -304,37 +290,10 @@ export async function POST(request: NextRequest) {
         })
 
     } catch (error) {
-        console.error('Lead webhook error:', error)
+        console.error(`[Lead Webhook] [${requestId}] error:`, error)
         return NextResponse.json(
-            { success: false, error: 'Internal error' },
+            { success: false, error: 'Internal error', request_id: requestId },
             { status: 500 }
         )
     }
-}
-
-// Normalize leads from different sources
-function normalizeLead(body: LeadWebhookBody) {
-    const rawValue = body.value ?? body.lead_value ?? 0
-
-    // Generic form format
-    return {
-        external_id: body.lead_id || body.id || `lead_${Date.now()}`,
-        source: body.source || 'form',
-        email: body.email?.toLowerCase().trim(),
-        phone: body.phone ? normalizePhone(body.phone) : null,
-        name: body.name || `${body.first_name || ''} ${body.last_name || ''}`.trim(),
-        company: body.company || null,
-        form_type: body.form_type || 'contact',
-        message: body.message || body.comments || null,
-        value: typeof rawValue === 'number' ? rawValue : parseFloat(rawValue),
-        currency: body.currency || 'CZK',
-        custom_fields: body.custom_fields || {},
-        session_id: body.session_id || body.halo_session_id,
-        consent_given: body.consent_given || body.gdpr_consent || false,
-        ip_address: body.ip_address || null,
-    }
-}
-
-function normalizePhone(phone: string): string {
-    return phone.replace(/\D/g, '')
 }

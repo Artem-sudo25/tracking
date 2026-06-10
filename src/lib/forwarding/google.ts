@@ -1,6 +1,7 @@
 // lib/forwarding/google.ts
 
 import type { GoogleParams, ForwardingResult } from '@/types'
+import { sha256, normalizePhoneE164 } from './shared'
 
 export async function sendToGoogle(params: GoogleParams): Promise<ForwardingResult> {
     const { session, order, measurementId, apiSecret } = params
@@ -9,7 +10,8 @@ export async function sendToGoogle(params: GoogleParams): Promise<ForwardingResu
 
     try {
         const hashedEmail = order.email ? await sha256(order.email.toLowerCase().trim()) : null
-        const hashedPhone = order.phone ? await sha256(normalizePhone(order.phone)) : null
+        // Google requires E.164 before hashing — bare digits never match
+        const hashedPhone = order.phone ? await sha256(normalizePhoneE164(order.phone, session.country)) : null
 
         payload = {
             client_id: session.ga_client_id || session.session_id,
@@ -19,7 +21,11 @@ export async function sendToGoogle(params: GoogleParams): Promise<ForwardingResu
                     transaction_id: order.external_id,
                     value: order.total,
                     currency: order.currency || 'CZK',
-                    ...(session.gclid ? { gclid: session.gclid } : {}),
+                    engagement_time_msec: 1,
+                    // GA4's own session id (from the _ga_<container> cookie) —
+                    // without it the event has no acquisition context and
+                    // reports as "Unassigned"
+                    ...(session.ga_session_id ? { session_id: session.ga_session_id } : {}),
                     items: order.items?.map((item: any) => ({
                         item_id: item.id,
                         item_name: item.name,
@@ -51,17 +57,4 @@ export async function sendToGoogle(params: GoogleParams): Promise<ForwardingResu
         console.error('Google EC error:', error)
         return { success: false, error, payload }
     }
-}
-
-async function sha256(str: string): Promise<string> {
-    const encoder = new TextEncoder()
-    const data = encoder.encode(str)
-    const hash = await crypto.subtle.digest('SHA-256', data)
-    return Array.from(new Uint8Array(hash))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('')
-}
-
-function normalizePhone(phone: string): string {
-    return phone.replace(/\D/g, '')
 }

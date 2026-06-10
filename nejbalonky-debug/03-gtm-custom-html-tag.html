@@ -1,0 +1,107 @@
+<!--
+  ============================================================================
+  NEJ BALONKY — CLIENT-SIDE DEBUG BEACON (GOOGLE TAG MANAGER)
+  ============================================================================
+  Create a new tag in GTM:
+    Tag type:  Custom HTML
+    Tag name:  NBK — Debug Beacon (thank-you / wrong host)
+    Trigger:   All Pages
+    HTML:      (paste the <script>...</script> block below)
+  Publish the workspace.
+  ============================================================================
+  IMPORTANT: If your session cookie uses a different name than the ones in the
+  regex below, edit `sessionCookieRe` to match your actual cookie name.
+  ============================================================================
+-->
+<script>
+(function () {
+  try {
+    var ENDPOINT = 'https://aiwzeqqzpvzycddfpxvt.supabase.co/functions/v1/debug-log';
+    var TOKEN    = 'nbk_debug_beacon_2026_a8f3k29x';
+
+    // Only run if this tag is actually executing in the context of the real shop
+    // (either nejbalonky.cz or the Hostinger temp domain). Skip GTM preview iframes
+    // and any other container embed.
+    var hostname  = location.hostname || '';
+    var isCanonical = /(^|\.)nejbalonky\.cz$/i.test(hostname);
+    var isTempHost  = /(^|\.)hostingersite\.com$/i.test(hostname);
+    if (!isCanonical && !isTempHost) return;
+
+    // Trigger only on thank-you pages OR when we're on the temp domain
+    var isThankYou  = /\/(objednavka-prijata|order-received|dekujeme|thank-you)\//i.test(location.pathname);
+    var isWrongHost = isTempHost; // now means "actually on hostingersite.com"
+    if (!isThankYou && !isWrongHost) return;
+
+    var cookies = document.cookie || '';
+
+    // HaloTrack sets a cookie named `_halo` on the client's domain.
+    // Also checks the SDK itself — the richer signal.
+    var haloCookieRe = /(^|; )_halo=/;
+    var hasHaloCookie = haloCookieRe.test(cookies);
+
+    var haloSdkLoaded = (typeof window.HaloTrack !== 'undefined');
+    var haloSessionId = null;
+    try {
+      if (haloSdkLoaded && typeof window.HaloTrack.getSessionId === 'function') {
+        haloSessionId = window.HaloTrack.getSessionId() || null;
+      }
+    } catch (_) { /* ignore */ }
+
+    // Consent lives in localStorage, not a cookie
+    var haloConsent = null;
+    try { haloConsent = localStorage.getItem('halo_cookie_consent'); } catch (_) {}
+
+    var navEntry = {};
+    try {
+      if (performance.getEntriesByType) {
+        navEntry = performance.getEntriesByType('navigation')[0] || {};
+      }
+    } catch (_) {}
+
+    var payload = {
+      client_id: 'client_nejbalonky',
+      source: 'js',
+      event_type: isThankYou ? 'thankyou_hit' : 'wrong_host_hit',
+      page_hostname: location.hostname,
+      page_href: location.href,
+      request_uri: location.pathname + location.search,
+      referer: document.referrer || null,
+      user_agent: navigator.userAgent,
+      session_cookie_present: hasHaloCookie,
+      navigation_type: navEntry.type || null,
+      redirect_count: (navEntry.redirectCount != null) ? navEntry.redirectCount : null,
+      raw_payload: {
+        halo: {
+          cookie_present: hasHaloCookie,
+          sdk_loaded: haloSdkLoaded,
+          session_id_retrievable: !!haloSessionId,
+          // do NOT send the actual session_id — just whether it resolves
+          consent_status: haloConsent // 'granted' | 'denied' | null
+        },
+        cookie_names: cookies.split(';').map(function (c) { return c.trim().split('=')[0]; }).filter(Boolean),
+        screen: { w: screen.width, h: screen.height, dpr: (window.devicePixelRatio || 1) },
+        language: navigator.language,
+        platform: navigator.platform || null,
+        protocol: location.protocol,
+        timing_domInteractive: (performance.timing)
+          ? performance.timing.domInteractive - performance.timing.navigationStart
+          : null,
+        timestamp: new Date().toISOString()
+      }
+    };
+
+    fetch(ENDPOINT, {
+      method: 'POST',
+      mode: 'cors',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-beacon-token': TOKEN
+      },
+      body: JSON.stringify(payload)
+    }).catch(function () { /* swallow */ });
+  } catch (e) {
+    /* swallow — never break the page */
+  }
+})();
+</script>
