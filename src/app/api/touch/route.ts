@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { isDuplicateTouchpoint } from '@/lib/touch'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -239,34 +240,48 @@ export async function POST(request: NextRequest) {
         // If this is a new session OR has new marketing data, we record a touchpoint.
         // We want to capture the full journey: 1st touch, 2nd touch, etc.
         if (hasTouchData) {
-            // Get current touchpoint count for this visitor
-            const { count } = await supabase
+            // Latest touchpoint for this visitor — gives the next number AND the
+            // fingerprint for dedupe (Consent Mode URL passthrough re-appends the
+            // same gclid to every internal link, which is one click, not N touches)
+            const { data: prevTouch } = await supabase
                 .from('touchpoints')
-                .select('*', { count: 'exact', head: true })
+                .select('touchpoint_number, source, medium, campaign, gclid, fbclid, ttclid, msclkid, timestamp')
                 .eq('client_id', CLIENT_ID)
                 .eq('session_id', sessionId)
+                .order('touchpoint_number', { ascending: false })
+                .limit(1)
+                .maybeSingle()
 
-            const nextNumber = (count || 0) + 1
-
-            // Insert new touchpoint
-            await supabase.from('touchpoints').insert({
-                client_id: CLIENT_ID,
-                session_id: sessionId,
+            const isDuplicate = isDuplicateTouchpoint(prevTouch, {
                 source: touch.source,
                 medium: touch.medium,
                 campaign: touch.campaign,
-                term: touch.term,
-                content: touch.content,
-                referrer: touch.referrer,
-                landing_page: touch.landing,
-                page_path: body.landing, // initial landing of this touch
                 gclid: body.gclid,
                 fbclid: body.fbclid,
                 ttclid: body.ttclid,
                 msclkid: body.msclkid,
-                touchpoint_number: nextNumber,
-                timestamp: touch.timestamp
             })
+
+            if (!isDuplicate) {
+                await supabase.from('touchpoints').insert({
+                    client_id: CLIENT_ID,
+                    session_id: sessionId,
+                    source: touch.source,
+                    medium: touch.medium,
+                    campaign: touch.campaign,
+                    term: touch.term,
+                    content: touch.content,
+                    referrer: touch.referrer,
+                    landing_page: touch.landing,
+                    page_path: body.landing, // initial landing of this touch
+                    gclid: body.gclid,
+                    fbclid: body.fbclid,
+                    ttclid: body.ttclid,
+                    msclkid: body.msclkid,
+                    touchpoint_number: (prevTouch?.touchpoint_number || 0) + 1,
+                    timestamp: touch.timestamp
+                })
+            }
         }
 
         // NOTE: server-side PageView forwarding removed (2026-06-10). The browser

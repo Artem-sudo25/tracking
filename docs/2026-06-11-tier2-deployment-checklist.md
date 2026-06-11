@@ -100,6 +100,14 @@ Remaining, optional:
 - [ ] GA4 standard reports attribute server-side conversions to real sources (not Unassigned)
 - [ ] Meta Events Manager match quality improved (IP + E.164 phone now in match params)
 
+## Addendum (2026-06-11) — touchpoint dedupe fix
+
+Found after the first deploy: Consent Mode **URL passthrough** re-appends the same gclid to every internal link when ad cookies are declined, so every pageview was recorded as a new "touchpoint" (journeys with 50+ identical google/cpc steps). Fixed in `/api/touch` (`src/lib/touch.ts` — same click ID + same source/medium/campaign = same ad click, skipped; identical UTM-only touches deduped within 30 min). Attribution and ad forwarding were never affected — first/last touch were already correct.
+
+- [ ] Commit + push this fix (redeploys all client projects, same as Step 2)
+- [ ] **After** the redeploy: run `supabase/migrations/cleanup_duplicate_touchpoints.sql` in the Supabase SQL editor — collapses historical duplicates and renumbers journeys (the verify query at the bottom shows the worst remaining journeys)
+- [ ] Spot-check one previously noisy order in the dashboard — journey should now read: ad click → purchase
+
 ## Already done (no action)
 
 - ✅ SOP bumped to **v5.1** in the Obsidian vault (`SOP_HaloTrack_Setup.md`) — new migration step, DB-driven CORS (Step 2.6 needs no deploy), extended Phase 4 tests, HMAC + Journey + CI sections, updated troubleshooting
