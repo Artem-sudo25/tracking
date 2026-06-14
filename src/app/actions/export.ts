@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { createHash } from 'crypto'
+import { buildGoogleConversionsCsv } from '@/lib/google-conversions'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -143,7 +144,7 @@ export async function exportGoogleConversions(
 
     let query = supabase
         .from('orders')
-        .select('external_order_id, total_amount, currency, created_at, sent_to_google, attribution_data')
+        .select('external_order_id, total_amount, currency, created_at, sent_to_google, session_id, customer_email, customer_phone, attribution_data')
         .eq('client_id', clientId)
         .gte('created_at', startDate)
         .lte('created_at', endDate)
@@ -160,48 +161,26 @@ export async function exportGoogleConversions(
         return { csv: '', rowCount: 0, skippedCount: 0, filename: '' }
     }
 
-    const headers = [
-        'Google Click ID',
-        'Conversion Name',
-        'Conversion Time',
-        'Conversion Value',
-        'Conversion Currency',
-        'Order ID',
-    ]
-
-    const rows: string[][] = []
-    let skippedCount = 0
-
-    for (const order of data) {
-        const gclid: string = order.attribution_data?.click_ids?.gclid ?? ''
-
-        // Skip rows with no gclid — Google cannot match without it
-        if (!gclid) {
-            skippedCount++
-            continue
-        }
-
-        rows.push([
-            gclid,
-            conversionName,
-            formatGoogleTime(order.created_at),
-            String(order.total_amount ?? ''),
-            order.currency ?? 'CZK',
-            order.external_order_id,
-        ])
-    }
-
-    const csv = [
-        headers.join(','),
-        ...rows.map(row => row.map(escapeCsvCell).join(','))
-    ].join('\n')
+    const { csv, rowCount, skippedCount } = buildGoogleConversionsCsv(
+        data.map(order => ({
+            externalId: order.external_order_id,
+            value: order.total_amount,
+            currency: order.currency,
+            createdAt: order.created_at,
+            sessionId: order.session_id ?? order.attribution_data?.session_id ?? null,
+            clickIds: order.attribution_data?.click_ids ?? {},
+            email: order.customer_email,
+            phone: order.customer_phone,
+        })),
+        conversionName
+    )
 
     const dateTag = formatDateTag(startDate, endDate)
     const suffix = failedOnly ? '-failed-only' : ''
 
     return {
         csv,
-        rowCount: rows.length,
+        rowCount,
         skippedCount,
         filename: `google-conversions-${dateTag}${suffix}.csv`,
     }
@@ -314,7 +293,7 @@ export async function exportGoogleLeads(
 
     let query = supabase
         .from('leads')
-        .select('external_lead_id, lead_value, currency, created_at, sent_to_google, attribution_data')
+        .select('external_lead_id, lead_value, currency, created_at, sent_to_google, session_id, email, phone, attribution_data')
         .eq('client_id', clientId)
         .gte('created_at', startDate)
         .lte('created_at', endDate)
@@ -331,40 +310,19 @@ export async function exportGoogleLeads(
         return { csv: '', rowCount: 0, skippedCount: 0, filename: '' }
     }
 
-    const headers = [
-        'Google Click ID',
-        'Conversion Name',
-        'Conversion Time',
-        'Conversion Value',
-        'Conversion Currency',
-        'Lead ID',
-    ]
-
-    const rows: string[][] = []
-    let skippedCount = 0
-
-    for (const lead of data) {
-        const gclid: string = lead.attribution_data?.click_ids?.gclid ?? ''
-
-        if (!gclid) {
-            skippedCount++
-            continue
-        }
-
-        rows.push([
-            gclid,
-            conversionName,
-            formatGoogleTime(lead.created_at),
-            String(lead.lead_value ?? ''),
-            lead.currency ?? 'CZK',
-            lead.external_lead_id,
-        ])
-    }
-
-    const csv = [
-        headers.join(','),
-        ...rows.map(row => row.map(escapeCsvCell).join(','))
-    ].join('\n')
+    const { csv, rowCount, skippedCount } = buildGoogleConversionsCsv(
+        data.map(lead => ({
+            externalId: lead.external_lead_id,
+            value: lead.lead_value,
+            currency: lead.currency,
+            createdAt: lead.created_at,
+            sessionId: lead.session_id ?? lead.attribution_data?.session_id ?? null,
+            clickIds: lead.attribution_data?.click_ids ?? {},
+            email: lead.email,
+            phone: lead.phone,
+        })),
+        conversionName
+    )
 
     const dateTag = formatDateTag(startDate, endDate)
     const suffix = failedOnly ? '-failed-only' : ''
@@ -372,7 +330,7 @@ export async function exportGoogleLeads(
 
     return {
         csv,
-        rowCount: rows.length,
+        rowCount,
         skippedCount,
         filename: `${filePrefix}-${dateTag}${suffix}.csv`,
     }
@@ -386,16 +344,6 @@ function escapeCsvCell(value: string): string {
         return '"' + value.replace(/"/g, '""') + '"'
     }
     return value
-}
-
-// Google Ads expects: "2026-04-17 10:00:00+00:00"
-function formatGoogleTime(isoString: string): string {
-    const d = new Date(isoString)
-    const pad = (n: number) => String(n).padStart(2, '0')
-    return (
-        `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
-        `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}+00:00`
-    )
 }
 
 // Filename date tag: "2026-04-01-to-2026-04-17"

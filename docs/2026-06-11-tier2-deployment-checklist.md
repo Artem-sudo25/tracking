@@ -73,13 +73,18 @@ Use the updated SOP v5.1 (Phase 4). Recommended client: nejbalonky (exercises th
 - [ ] Test 4: GA4 conversion NOT "Unassigned" (Realtime immediately; standard reports 24–48 h)
 - [ ] Test 5/6: forwarding queue clean, Signal Health green
 
-## Step 6 — Client-site follow-ups (starter repo / Next.js sites — when you next touch them)
+## Step 6 — Client-site follow-ups — ✅ DONE in code (2026-06-11), deploys pending
 
-None of these block the deploy; leads fall back gracefully meanwhile.
+All three changes (visitor IP in lead body, `halo:consent-changed` dispatch, HMAC-signed webhooks with legacy header kept) are implemented in all four Next.js repos that integrate HaloTrack:
 
-- [ ] **Visitor IP on leads:** form handlers pass the visitor's `ip_address` in the lead webhook body (from the site's own request headers). Until then, leads use the matched session's stored IP.
-- [ ] **Consent event:** custom banner dispatches `window.dispatchEvent(new CustomEvent('halo:consent-changed'))` after saving `halo_cookie_consent`, so t.js picks up consent granted after page load. (Cookiebot/CookieYes sites: nothing to do — auto-detected.)
-- [ ] **HMAC signing:** webhook senders add `x-halo-timestamp` + `x-halo-signature: hex(hmac_sha256("${ts}.${rawBody}", WEBHOOK_SECRET))`. Legacy `x-webhook-secret` keeps working until all senders are migrated.
+| Repo | What changed | Deploy action |
+|---|---|---|
+| `dev/haloagency-website` | Lead route: visitor IP + HMAC (Web Crypto, edge). `lib/consent.ts`: halo event. | Commit + push |
+| `dev/haloagency-starter` | Same as above; also removed the unsafe browser-direct HaloTrack sender (dead code that shipped the webhook secret via `NEXT_PUBLIC_`) and fixed missing `https://` in `trackFormEvent`. | Commit + push (template — future clients inherit) |
+| `projects/catcafe/.../catcafe-prague` | Booking route: visitor IP + HMAC (node crypto). `lib/consent.ts`: halo event. | Commit + push |
+| `Desktop/development/propradlo-b2b` | **Biggest fix:** leads were sent browser→HaloTrack with NO auth (almost certainly 401-rejected — check if propradlo leads ever appeared in the dashboard). Moved into `/api/contact` server-side with IP + HMAC. Cookie banner now writes `halo_cookie_consent` + dispatches the event. | Commit + push **and add `HALOTRACK_WEBHOOK_SECRET` env var in propradlo's Vercel project** (must equal the `WEBHOOK_SECRET` of propradlo's HaloTrack deployment), redeploy |
+
+Skipped (verified no integration / stale): `haloagency-com` (marketing copy only), `haloagency-website-ui-v2-theme` (archived theme, last commit March 2026), nejbalonky (WooCommerce — plugin handles all of this, see Step 7).
 
 ## Step 7 — WooCommerce clients
 

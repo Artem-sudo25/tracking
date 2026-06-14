@@ -138,6 +138,8 @@ export async function POST(request: NextRequest) {
             },
             click_ids: {
                 gclid: session.gclid,
+                gbraid: session.gbraid,
+                wbraid: session.wbraid,
                 fbclid: session.fbclid,
                 fbc: session.fbc,
                 fbp: session.fbp,

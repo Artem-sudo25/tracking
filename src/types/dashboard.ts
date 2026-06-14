@@ -14,6 +14,8 @@ export interface LeadTouchData {
 
 export interface LeadClickIds {
   gclid?: string | null
+  gbraid?: string | null
+  wbraid?: string | null
   fbclid?: string | null
   fbc?: string | null
   fbp?: string | null

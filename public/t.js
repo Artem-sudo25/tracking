@@ -77,6 +77,8 @@
         utm_content: params.get('utm_content'),
         custom_params: Object.fromEntries(params.entries()),
         gclid: params.get('gclid'),
+        gbraid: params.get('gbraid'),
+        wbraid: params.get('wbraid'),
         fbclid: params.get('fbclid'),
         ttclid: params.get('ttclid'),
         msclkid: params.get('msclkid'),

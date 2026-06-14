@@ -169,6 +169,8 @@ export interface TouchData {
 
 export interface ClickIds {
   gclid?: string | null
+  gbraid?: string | null
+  wbraid?: string | null
   fbclid?: string | null
   fbc?: string | null
   fbp?: string | null

@@ -22,12 +22,15 @@ interface SessionTouchUpdate {
     country?: string | null
     city?: string | null
     gclid?: string | null
+    gbraid?: string | null
+    wbraid?: string | null
     fbclid?: string | null
     fbc?: string | null
     fbp?: string | null
     ttclid?: string | null
     msclkid?: string | null
     custom_params?: Record<string, string>
+    ga_client_id?: string | null
     ga_session_id?: string | null
     ip_address?: string | null
     consent_status?: string
@@ -169,6 +172,8 @@ export async function POST(request: NextRequest) {
                 lt_timestamp: touch.timestamp,
 
                 gclid: body.gclid,
+                gbraid: body.gbraid,
+                wbraid: body.wbraid,
                 fbclid: body.fbclid,
                 fbc,
                 fbp,
@@ -211,13 +216,15 @@ export async function POST(request: NextRequest) {
             if (city) updateData.city = city
             if (ip !== 'unknown') updateData.ip_address = ip
             if (body.gclid) updateData.gclid = body.gclid
+            if (body.gbraid) updateData.gbraid = body.gbraid
+            if (body.wbraid) updateData.wbraid = body.wbraid
             if (body.fbclid) updateData.fbclid = body.fbclid
             if (fbc) updateData.fbc = fbc
             if (fbp) updateData.fbp = fbp
             if (body.ttclid) updateData.ttclid = body.ttclid
             if (body.msclkid) updateData.msclkid = body.msclkid
             if (Object.keys(customParams).length > 0) updateData.custom_params = customParams
-            if (body.ga_client_id) (updateData as any).ga_client_id = body.ga_client_id
+            if (body.ga_client_id) updateData.ga_client_id = body.ga_client_id
             if (body.ga_session_id) updateData.ga_session_id = body.ga_session_id
             if (consentStatus === 'granted') updateData.consent_status = 'granted'
 
