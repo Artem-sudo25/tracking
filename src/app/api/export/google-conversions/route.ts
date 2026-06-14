@@ -4,7 +4,11 @@
 // for a rolling window so late-settling orders are caught — Google de-dupes
 // re-sends by gclid+name+time, so overlap is safe.
 //
-// Auth: ?key=<GOOGLE_EXPORT_KEY>. Serves this deployment's CLIENT_ID only.
+// Auth: HTTP Basic Auth (password = GOOGLE_EXPORT_KEY; username ignored) — this
+// is what Google Ads' scheduled HTTPS upload sends. Also accepts ?key=<…> as a
+// fallback for browser testing. Serves this deployment's CLIENT_ID only.
+// Reachable at both /api/export/google-conversions and …google-conversions.csv
+// (Google's importer requires a .csv/.tsv URL — see the rewrite in next.config).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -27,6 +31,26 @@ function timingSafeEqual(a: string, b: string): boolean {
     return diff === 0
 }
 
+// The provided secret can arrive two ways: ?key=… (browser test) or HTTP Basic
+// Auth (what Google Ads' scheduled HTTPS upload sends). For Basic Auth we check
+// the password component against GOOGLE_EXPORT_KEY; the username is ignored.
+function extractProvidedKey(request: NextRequest): string {
+    const fromQuery = request.nextUrl.searchParams.get('key')
+    if (fromQuery) return fromQuery
+
+    const auth = request.headers.get('authorization') ?? ''
+    if (auth.startsWith('Basic ')) {
+        try {
+            const decoded = Buffer.from(auth.slice(6), 'base64').toString('utf8')
+            const sep = decoded.indexOf(':')
+            return sep >= 0 ? decoded.slice(sep + 1) : decoded
+        } catch {
+            return ''
+        }
+    }
+    return ''
+}
+
 // Collect the session ids whose consent was later set to 'denied', so their
 // conversions are excluded (granted + unknown remain uploadable).
 async function deniedSessionIds(sessionIds: string[]): Promise<Set<string>> {
@@ -45,9 +69,12 @@ async function deniedSessionIds(sessionIds: string[]): Promise<Set<string>> {
 
 export async function GET(request: NextRequest) {
     const key = process.env.GOOGLE_EXPORT_KEY
-    const provided = request.nextUrl.searchParams.get('key') ?? ''
-    if (!key || !timingSafeEqual(provided, key)) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const provided = extractProvidedKey(request)
+    if (!key || !provided || !timingSafeEqual(provided, key)) {
+        return new NextResponse('Unauthorized', {
+            status: 401,
+            headers: { 'WWW-Authenticate': 'Basic realm="halotrack"' },
+        })
     }
 
     const daysParam = parseInt(request.nextUrl.searchParams.get('days') ?? '', 10)

@@ -70,7 +70,7 @@ GA4 import (browser+server) ──► Google Ads (Secondary, cross-check only)
 ### C3. Secured GET endpoint Google Ads can pull
 - **Create `src/app/api/export/google-conversions/route.ts`** (GET, returns `text/csv`).
 - **Rolling window:** default **last 7 days** (`?days=` overridable). Re-serving overlapping days is safe — Google dedups by gclid+conversionName+time — and the window catches late-settling orders so none fall through.
-- **Auth:** require a secret (`?key=…` checked against new env `GOOGLE_EXPORT_KEY`, or HTTP Basic auth — Google Ads scheduled uploads support both). Strong random value. If Enhanced Conversions (hashed email) is added later, basic auth + the no-PII-in-querystring rule become mandatory.
+- **Auth (UPDATED 2026-06-14 — Google's importer dictated this):** Google Ads' scheduled HTTPS upload **requires HTTP Basic Auth** (username + password fields, both required) and a URL **ending in `.csv`/`.tsv`** — a `?key=` query URL is rejected ("Unable to read file format"). Implemented: endpoint checks the Basic-Auth **password** against `GOOGLE_EXPORT_KEY` (username ignored), and still accepts `?key=` as a browser-test fallback. The `.csv` URL is a **rewrite in `next.config.ts`** (`/api/export/google-conversions.csv` → the route); query string preserved. Hashed email/phone travel in the Basic-Auth'd body over HTTPS, not in the querystring — good.
 - Client scoping: endpoint serves the deployment's own `CLIENT_ID`; ecommerce → orders, leads/bookings → leads (mirror dashboard `client_type` logic).
 - Returns the C2 CSV with a `text/csv` content-type and no caching.
 
@@ -94,7 +94,12 @@ GA4 import (browser+server) ──► Google Ads (Secondary, cross-check only)
 1. **Confirm auto-tagging is ON** (Admin → Account settings → Auto-tagging). This is what puts gclid/gbraid on your URLs — it already is, but verify.
 2. **Create the Import conversion action:** Goals → Conversions → New → **Import → Other data sources or CRMs → Track conversions from clicks**. Name it **exactly** what C2 sends (e.g. `HaloTrack Purchase`).
    - Category: Purchase. Value: **Use the value from the upload**. Count: **Every**. Attribution: your standard (data-driven).
-3. **Schedule the daily pull:** Tools → Conversions → **Uploads → Schedule → Create schedule** → source **HTTPS**, paste the endpoint URL (with `?key=…` or basic-auth creds), frequency **Daily**. Save.
+3. **Schedule the daily pull:** source **HTTPS**, then fill the "Link to your data source" form:
+   - **URL:** `https://cdn.nejbalonky.cz/api/export/google-conversions.csv` (must end in `.csv`)
+   - **Username:** anything (e.g. `google`) — ignored by the endpoint
+   - **Password:** the `GOOGLE_EXPORT_KEY` value
+   - Frequency **Daily**. Save.
+   - Browser pre-test (works after redeploy): `…/api/export/google-conversions.csv?key=<KEY>` should download a CSV.
 4. **Switch primaries** once the first upload lands and looks right:
    - `HaloTrack Purchase` (offline) → **Primary**.
    - `GA4 (web) purchase` → **Secondary** (keep as cross-check; Secondary is excluded from bidding/Conversions column, so no double-count).
