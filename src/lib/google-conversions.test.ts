@@ -46,7 +46,7 @@ describe('buildGoogleConversionsCsv', () => {
     it('emits the Google Ads header row with gbraid/wbraid + enhanced columns', () => {
         const { csv } = buildGoogleConversionsCsv([base], 'HaloTrack Purchase')
         expect(csv.split('\n')[0]).toBe(
-            'Google Click ID,GBRAID,WBRAID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency,Order ID,Email,Phone Number'
+            'Google Click ID,GBRAID,WBRAID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency,Order ID,Email,Phone Number,Ad User Data Consent,Ad Personalization Consent'
         )
     })
 
@@ -133,6 +133,33 @@ describe('buildGoogleConversionsCsv', () => {
         const denied = new Set(['sess-denied'])
         const rec = { ...base, externalId: 'o-11', sessionId: 'sess-denied', email: 'x@y.com', phone: '777123456' }
         const { rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase', denied)
+        expect(rowCount).toBe(0)
+        expect(skippedCount).toBe(1)
+    })
+
+    it('stamps GRANTED in both consent columns for a granted session', () => {
+        const rec: RawConversion = { ...base, externalId: 'o-12', consent: 'granted' }
+        const row = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase').csv.split('\n')[1].split(',')
+        expect(row[10]).toBe('GRANTED') // Ad User Data Consent
+        expect(row[11]).toBe('GRANTED') // Ad Personalization Consent
+    })
+
+    it('stamps UNSPECIFIED for unknown consent (no over-claim)', () => {
+        const rec: RawConversion = { ...base, externalId: 'o-13', consent: 'unknown' }
+        const row = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase').csv.split('\n')[1].split(',')
+        expect(row[10]).toBe('UNSPECIFIED')
+        expect(row[11]).toBe('UNSPECIFIED')
+    })
+
+    it('defaults to UNSPECIFIED when consent is absent', () => {
+        const row = buildGoogleConversionsCsv([base], 'HaloTrack Purchase').csv.split('\n')[1].split(',')
+        expect(row[10]).toBe('UNSPECIFIED')
+        expect(row[11]).toBe('UNSPECIFIED')
+    })
+
+    it('skips a row whose per-record consent is denied', () => {
+        const rec: RawConversion = { ...base, externalId: 'o-14', consent: 'denied' }
+        const { rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase')
         expect(rowCount).toBe(0)
         expect(skippedCount).toBe(1)
     })

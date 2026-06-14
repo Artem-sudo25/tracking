@@ -38,6 +38,9 @@ export interface RawConversion {
     clickIds: ClickIdSet
     email?: string | null    // raw; hashed here
     phone?: string | null    // raw; hashed here
+    // The session's HaloTrack consent_status. 'denied' rows are excluded
+    // entirely; 'granted'/'unknown' map to the per-row consent columns below.
+    consent?: 'granted' | 'unknown' | 'denied' | null
 }
 
 export interface GoogleCsvResult {
@@ -57,7 +60,17 @@ const HEADERS = [
     'Order ID',
     'Email',
     'Phone Number',
+    'Ad User Data Consent',
+    'Ad Personalization Consent',
 ]
+
+// Map HaloTrack's single consent_status to Google's per-row consent value.
+// 'granted' → GRANTED; anything else we send (only 'unknown' survives the
+// filter) → UNSPECIFIED, which is honest — we don't over-claim consent for the
+// unknown cohort. Both Google consent fields get the same value.
+function consentCell(consent: RawConversion['consent']): string {
+    return consent === 'granted' ? 'GRANTED' : 'UNSPECIFIED'
+}
 
 // Prefer gclid; fall back to gbraid, then wbraid. Exactly one column is filled.
 export function pickClickId(
@@ -82,7 +95,10 @@ export function buildGoogleConversionsCsv(
 
     for (const r of records) {
         // Compliance: never upload click ids OR hashed PII for denied sessions.
-        if (r.sessionId && deniedSessions.has(r.sessionId)) {
+        // Denial can arrive per-record (r.consent) or via the deniedSessions set.
+        const denied =
+            r.consent === 'denied' || (r.sessionId != null && deniedSessions.has(r.sessionId))
+        if (denied) {
             skippedCount++
             continue
         }
@@ -97,6 +113,8 @@ export function buildGoogleConversionsCsv(
             continue
         }
 
+        const consent = consentCell(r.consent)
+
         rows.push([
             picked?.column === 'gclid' ? picked.value : '',
             picked?.column === 'gbraid' ? picked.value : '',
@@ -108,6 +126,8 @@ export function buildGoogleConversionsCsv(
             r.externalId,
             emailHash,
             phoneHash,
+            consent,
+            consent,
         ])
     }
 

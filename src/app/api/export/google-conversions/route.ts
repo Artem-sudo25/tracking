@@ -51,20 +51,20 @@ function extractProvidedKey(request: NextRequest): string {
     return ''
 }
 
-// Collect the session ids whose consent was later set to 'denied', so their
-// conversions are excluded (granted + unknown remain uploadable).
-async function deniedSessionIds(sessionIds: string[]): Promise<Set<string>> {
+// Map each session_id → its consent_status, so the builder can both exclude
+// 'denied' rows and stamp the per-row consent columns (granted/unknown).
+type Consent = 'granted' | 'unknown' | 'denied'
+async function sessionConsent(sessionIds: string[]): Promise<Map<string, Consent>> {
     const ids = [...new Set(sessionIds.filter(Boolean))]
-    if (ids.length === 0) return new Set()
+    if (ids.length === 0) return new Map()
 
     const { data } = await supabase
         .from('sessions')
-        .select('session_id')
+        .select('session_id, consent_status')
         .eq('client_id', CLIENT_ID)
-        .eq('consent_status', 'denied')
         .in('session_id', ids)
 
-    return new Set((data ?? []).map(r => r.session_id))
+    return new Map((data ?? []).map(r => [r.session_id, r.consent_status as Consent]))
 }
 
 export async function GET(request: NextRequest) {
@@ -139,8 +139,11 @@ export async function GET(request: NextRequest) {
         }
     }
 
-    const denied = await deniedSessionIds(records.map(r => r.sessionId ?? ''))
-    const { csv } = buildGoogleConversionsCsv(records, conversionName, denied)
+    const consentBySession = await sessionConsent(records.map(r => r.sessionId ?? ''))
+    for (const r of records) {
+        r.consent = r.sessionId ? consentBySession.get(r.sessionId) ?? null : null
+    }
+    const { csv } = buildGoogleConversionsCsv(records, conversionName)
 
     return new NextResponse(csv, {
         status: 200,

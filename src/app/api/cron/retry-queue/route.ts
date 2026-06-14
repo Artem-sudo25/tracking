@@ -63,6 +63,13 @@ export async function GET(request: NextRequest) {
           results.dead++
           continue
         }
+        // Honour the Part 7 kill-switch: don't retry stale server→GA4 sends
+        // once SKIP_SERVER_GA4_PURCHASE is set on this deployment.
+        if (process.env.SKIP_SERVER_GA4_PURCHASE === 'true') {
+          await markDead(item.id, 'Server-side GA4 purchase disabled (SKIP_SERVER_GA4_PURCHASE)')
+          results.dead++
+          continue
+        }
         endpoint = `https://www.google-analytics.com/mp/collect?measurement_id=${google.measurement_id}&api_secret=${google.api_secret}`
       }
 

@@ -246,8 +246,8 @@ export async function POST(request: NextRequest) {
                 console.log('[Lead Webhook] FB Skipped: Missing settings or already sent');
             }
 
-            // Google Offline Conversions
-            if (settings.google?.measurement_id && settings.google?.api_secret && !existingLead?.sent_to_google) {
+            // Google server-side GA4 send — skipped when SKIP_SERVER_GA4_PURCHASE=true (Part 7 kill-switch; creds kept, reversible)
+            if (settings.google?.measurement_id && settings.google?.api_secret && process.env.SKIP_SERVER_GA4_PURCHASE !== 'true' && !existingLead?.sent_to_google) {
                 googleResult = await sendLeadToGoogle({
                     session,
                     lead,

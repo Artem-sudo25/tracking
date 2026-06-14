@@ -244,8 +244,8 @@ export async function POST(request: NextRequest) {
                 }
             }
 
-            // Google Enhanced Conversions
-            if (settings.google?.measurement_id && settings.google?.api_secret && !existingOrder?.sent_to_google) {
+            // Google server-side GA4 send — skipped when SKIP_SERVER_GA4_PURCHASE=true (Part 7 kill-switch; creds kept, reversible)
+            if (settings.google?.measurement_id && settings.google?.api_secret && process.env.SKIP_SERVER_GA4_PURCHASE !== 'true' && !existingOrder?.sent_to_google) {
                 googleResult = await sendToGoogle({
                     session,
                     order,

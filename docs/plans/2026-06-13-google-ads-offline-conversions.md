@@ -84,6 +84,12 @@ GA4 import (browser+server) ──► Google Ads (Secondary, cross-check only)
 - **Google-side requirement (Part 2.5):** rows that have *only* hashed data and no click id are matched **only if** "Enhanced conversions for leads" is enabled on the conversion action; otherwise Google ignores the user-data columns and rejects those click-id-less rows (harmless — skipped, never double-counted).
 - Tests: +11 (hashing/normalization, enhanced columns, cross-device email-only row, denied-still-blocks-PII). 62/62 green.
 
+### C7. Per-row consent columns (DONE 2026-06-14)
+- **Why:** sending hashed PII for EEA users means Google expects a consent signal (DMA / Consent Mode v2). Per-row is more accurate than a blanket account-level default — it won't over-claim consent for the `unknown` cohort.
+- **Built:** two columns appended — `Ad User Data Consent`, `Ad Personalization Consent`. Mapping from HaloTrack `consent_status`: `granted` → `GRANTED`; `unknown` (or absent) → `UNSPECIFIED`; `denied` → row excluded entirely (unchanged). Both columns carry the same value (one consent_status → both Google signals). The endpoint now fetches `session_id → consent_status` for all rows (was: denied-only set) and stamps `r.consent`.
+- **Assumption to confirm:** this treats `consent_status = granted` as covering *both* ad-measurement and ad-personalization consent. Correct if HaloTrack's gate reflects marketing consent; if it only reflects analytics consent, personalization should be downgraded.
+- Tests: +4 (granted→GRANTED, unknown→UNSPECIFIED, absent→UNSPECIFIED, per-record denied→skip). **66/66 green**, tsc clean, build OK.
+
 ### C5 (optional, later) — push instead of pull
 - If you ever want HaloTrack to push via the **Google Ads API** on a Vercel cron instead of Google Ads pulling: add `/api/cron/google-ads-upload` + a daily entry in `vercel.json`, using `uploadClickConversions`. Needs a Google Ads **developer token** + OAuth refresh token + customer ID + conversion action ID per client (store in `clients.settings.google_ads`). More power (richer Enhanced Conversions) but much more setup — **skip unless the pull model proves insufficient.**
 
@@ -161,16 +167,17 @@ Only upload click IDs for orders whose session **allowed ad/marketing storage** 
 
 **Effect of turning it off:** GA4 goes back to clean, browser-sourced analytics (as it behaved "before"). Trade-off: GA4's own reports lose the ~8–14% server-side recovery — but that's how GA4 effectively behaved when you were happy (the server send was inert pre-June), and the offline pipe covers ad-blocker resilience for the part that matters (Ads conversions). Meta CAPI, the offline upload, and the browser GA4 purchase are all **unaffected** — only the server→GA4 send stops.
 
-**How (one of, reversible):**
-- Code: add a per-client flag (e.g. `settings.google.skip_server_purchase`) checked before `sendToGoogle` in the order webhook — **preferred** (keeps creds, one-line flip back on), **or**
-- SQL: remove `settings.google.measurement_id` + `settings.google.api_secret` from nejbalonky's `clients` row (used *only* by `sendToGoogle`; the offline upload and Meta don't need them).
+**How — BUILT 2026-06-14 as a Vercel env-var kill-switch (no SQL/DB edit; creds & code kept for reuse):**
+- Set **`SKIP_SERVER_GA4_PURCHASE=true`** on nejbalonky's HaloTrack deployment. Checked before `sendToGoogle` in **both** the order webhook ([webhook/order/route.ts](../../src/app/api/webhook/order/route.ts)) and lead webhook, **and** in the retry queue ([cron/retry-queue/route.ts](../../src/app/api/cron/retry-queue/route.ts)) so stale queued GA4 sends don't fire after the flip.
+- Per-deployment = per-client (each client is its own deployment with its own `CLIENT_ID`), so this affects **only nejbalonky**. The `measurement_id`/`api_secret` stay in the `clients` row untouched — re-enable later by deleting the env var (or setting it `false`) and redeploying.
+- Reversal cost: a redeploy (a few minutes), not instant — acceptable for a 5-day test.
 
-**Rollback trigger:** if GA4 hasn't recovered (Unassigned shrinks, google/cpc rises, Ads daily conversions look sane) within ~5 days, flip the send back ON — the server feed wasn't the cause, and we move to the row-level check (which specific 12-Jun orders GA4 put in Unassigned; how many HaloTrack orders carry a gclid).
+**Rollback trigger:** if GA4 hasn't recovered (Unassigned shrinks, google/cpc rises, Ads daily conversions look sane) within ~5 days, set `SKIP_SERVER_GA4_PURCHASE=false` (or remove it) and redeploy — the server feed wasn't the cause, and we move to the row-level check (which specific 12-Jun orders GA4 put in Unassigned; how many HaloTrack orders carry a gclid).
 
-- [ ] Ship the `skip_server_purchase` flag in the same deploy as Phase 1
+- [ ] Set `SKIP_SERVER_GA4_PURCHASE=true` on nejbalonky's deployment in the same deploy as Phase 1
 - [ ] Confirm `sendToGoogle` is skipped for nejbalonky (no server→GA4 purchase hits)
 - [ ] Within ~5 days: GA4 Unassigned purchases shrink + google/cpc rises + Ads daily conversions normalize
-- [ ] If not recovered in ~5 days → flip back ON, run row-level check
+- [ ] If not recovered in ~5 days → set the env var `false` + redeploy, run row-level check
 
 ---
 
