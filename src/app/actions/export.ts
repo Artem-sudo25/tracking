@@ -144,7 +144,7 @@ export async function exportGoogleConversions(
 
     let query = supabase
         .from('orders')
-        .select('external_order_id, total_amount, currency, created_at, sent_to_google, session_id, customer_email, customer_phone, attribution_data')
+        .select('external_order_id, total_amount, currency, created_at, sent_to_google, session_id, attribution_data')
         .eq('client_id', clientId)
         .gte('created_at', startDate)
         .lte('created_at', endDate)
@@ -169,8 +169,6 @@ export async function exportGoogleConversions(
             createdAt: order.created_at,
             sessionId: order.session_id ?? order.attribution_data?.session_id ?? null,
             clickIds: order.attribution_data?.click_ids ?? {},
-            email: order.customer_email,
-            phone: order.customer_phone,
         })),
         conversionName
     )
@@ -293,7 +291,7 @@ export async function exportGoogleLeads(
 
     let query = supabase
         .from('leads')
-        .select('external_lead_id, lead_value, currency, created_at, sent_to_google, session_id, email, phone, attribution_data')
+        .select('external_lead_id, lead_value, currency, created_at, sent_to_google, session_id, attribution_data')
         .eq('client_id', clientId)
         .gte('created_at', startDate)
         .lte('created_at', endDate)
@@ -318,8 +316,6 @@ export async function exportGoogleLeads(
             createdAt: lead.created_at,
             sessionId: lead.session_id ?? lead.attribution_data?.session_id ?? null,
             clickIds: lead.attribution_data?.click_ids ?? {},
-            email: lead.email,
-            phone: lead.phone,
         })),
         conversionName
     )

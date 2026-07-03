@@ -77,7 +77,15 @@ GA4 import (browser+server) ──► Google Ads (Secondary, cross-check only)
 ### C4. Tests
 - Unit-test the C2 builder: gclid present; gbraid-only fallback; wbraid-only fallback; none → skipped; consent-denied → skipped; value/currency/time formatting; conversion-name passthrough. Follow the existing `payloads.test.ts` / `normalize.test.ts` style. `tsc` + suite green.
 
-### C6. Enhanced Conversions — hashed email + phone (DONE 2026-06-13)
+### C6. Enhanced Conversions — hashed email + phone (⚠️ REVERSED 2026-06-15, see C8)
+
+### C8. Reverted to click-ID-only (DONE 2026-06-15)
+- **Why:** the first scheduled upload ran fine (**26 rows imported**) but **14 errored** — all rows with no click id. Root cause: the Google Ads action is the **"track conversions from clicks"** type, which matches on **gclid/gbraid/wbraid/IP/session-attributes only** — its field mapping has **no email/phone target field at all**. So the C6 hashed email/phone columns were unmappable dead weight, and emitting click-id-less (email-only) rows just produced errors.
+- **Change:** inclusion logic now **requires a click id** (gclid/gbraid/wbraid); email-only rows are skipped. Removed the `Email`/`Phone Number` columns + all hashing (`hashEmail`/`hashPhone`/`normalizePhoneE164`) from `google-conversions.ts`, and dropped the `customer_email`/`customer_phone` (orders) and `email`/`phone` (leads) selects from the endpoint and `export.ts`. Also better data-minimization (no unused hashed PII leaves for the EU cohort). **Consent columns kept** (they ARE mapped/used). 55/55 tests, tsc clean, build OK.
+- **Net effect:** next upload should report **0 errors** — only matchable click-id rows are sent. Genuinely-direct orders (no Google click) are correctly excluded.
+- **If cross-device recovery is ever wanted:** it needs a *separate* Enhanced Conversions for Leads action (different setup, awkward for purchases, marginal at ~43 orders/wk). Part 2.5 below is moot for the current click-based action.
+
+#### (historical) C6 as originally built —
 - **Why:** gclid is per-click/per-device. A customer who clicks the ad on their phone but buys on a laptop has no click id on the purchasing session, so a click-id-only upload misses that order. Hashed email/phone let Google match those via its identity graph — closes the cross-device gap. (Cookiebot shows ~28% opt-out and ~43 orders/week, so at this scale Consent Mode *modeling* likely does little; the cross-device gap is the more real loss, hence this layer.)
 - **Built:** `buildGoogleConversionsCsv` now appends two columns — `Email`, `Phone Number` — SHA-256 hex hashed (`hashEmail`, `hashPhone`/`normalizePhoneE164` in `google-conversions.ts`). Email = trim+lowercase; phone = E.164 (`+420…`). Both the scheduled endpoint and the manual `export.ts` actions now select + pass `customer_email`/`customer_phone` (orders) and `email`/`phone` (leads).
 - **Inclusion logic widened:** a row is emitted if it has **a click id OR a hashed email/phone**. Rows with none are still skipped. The consent filter is unchanged and absolute — **denied sessions emit nothing, including no PII**.

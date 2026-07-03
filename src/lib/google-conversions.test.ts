@@ -1,16 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { createHash } from 'crypto'
 import {
     pickClickId,
     buildGoogleConversionsCsv,
     formatGoogleTime,
-    hashEmail,
-    hashPhone,
-    normalizePhoneE164,
     type RawConversion,
 } from './google-conversions'
-
-const sha256Hex = (v: string) => createHash('sha256').update(v).digest('hex')
 
 const base: RawConversion = {
     externalId: 'o-1',
@@ -43,10 +37,10 @@ describe('formatGoogleTime', () => {
 })
 
 describe('buildGoogleConversionsCsv', () => {
-    it('emits the Google Ads header row with gbraid/wbraid + enhanced columns', () => {
+    it('emits the Google Ads header row (click ids + consent)', () => {
         const { csv } = buildGoogleConversionsCsv([base], 'HaloTrack Purchase')
         expect(csv.split('\n')[0]).toBe(
-            'Google Click ID,GBRAID,WBRAID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency,Order ID,Email,Phone Number,Ad User Data Consent,Ad Personalization Consent'
+            'Google Click ID,GBRAID,WBRAID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency,Order ID,Ad User Data Consent,Ad Personalization Consent'
         )
     })
 
@@ -70,14 +64,14 @@ describe('buildGoogleConversionsCsv', () => {
         expect(row[1]).toBe('0AAAgbraid')
     })
 
-    it('skips conversions with no click id at all', () => {
+    it('skips conversions with no click id (this action matches on click ids only)', () => {
         const rec = { ...base, externalId: 'o-3', clickIds: {} }
         const { rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase')
         expect(rowCount).toBe(0)
         expect(skippedCount).toBe(1)
     })
 
-    it('skips conversions whose session withdrew consent (denied)', () => {
+    it('skips conversions whose session withdrew consent (denied set)', () => {
         const denied = new Set(['sess-denied'])
         const rec = { ...base, externalId: 'o-4', sessionId: 'sess-denied' }
         const { rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase', denied)
@@ -99,62 +93,24 @@ describe('buildGoogleConversionsCsv', () => {
         expect(row[5]).toBe('')
     })
 
-    it('appends hashed email + phone in the enhanced-conversion columns', () => {
-        const rec = { ...base, externalId: 'o-8', email: 'Buyer@Example.com ', phone: '777 123 456' }
-        const row = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase').csv.split('\n')[1].split(',')
-        expect(row[8]).toBe(sha256Hex('buyer@example.com'))      // trimmed + lowercased
-        expect(row[9]).toBe(sha256Hex('+420777123456'))          // E.164
-    })
-
-    it('leaves enhanced columns empty when no email/phone present', () => {
-        const row = buildGoogleConversionsCsv([base], 'HaloTrack Purchase').csv.split('\n')[1].split(',')
-        expect(row[8]).toBe('') // Email
-        expect(row[9]).toBe('') // Phone Number
-    })
-
-    it('includes a row with email but NO click id (cross-device gap)', () => {
-        const rec = { ...base, externalId: 'o-9', clickIds: {}, email: 'x@y.com' }
-        const { csv, rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase')
-        const row = csv.split('\n')[1].split(',')
-        expect(rowCount).toBe(1)
-        expect(skippedCount).toBe(0)
-        expect(row[0]).toBe('')                         // no gclid
-        expect(row[8]).toBe(sha256Hex('x@y.com'))       // matched on email
-    })
-
-    it('still skips a row with no click id AND no email/phone', () => {
-        const rec = { ...base, externalId: 'o-10', clickIds: {}, email: null, phone: null }
-        const { rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase')
-        expect(rowCount).toBe(0)
-        expect(skippedCount).toBe(1)
-    })
-
-    it('never emits PII for a denied session even with email/phone', () => {
-        const denied = new Set(['sess-denied'])
-        const rec = { ...base, externalId: 'o-11', sessionId: 'sess-denied', email: 'x@y.com', phone: '777123456' }
-        const { rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase', denied)
-        expect(rowCount).toBe(0)
-        expect(skippedCount).toBe(1)
-    })
-
     it('stamps GRANTED in both consent columns for a granted session', () => {
         const rec: RawConversion = { ...base, externalId: 'o-12', consent: 'granted' }
         const row = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase').csv.split('\n')[1].split(',')
-        expect(row[10]).toBe('GRANTED') // Ad User Data Consent
-        expect(row[11]).toBe('GRANTED') // Ad Personalization Consent
+        expect(row[8]).toBe('GRANTED') // Ad User Data Consent
+        expect(row[9]).toBe('GRANTED') // Ad Personalization Consent
     })
 
     it('stamps UNSPECIFIED for unknown consent (no over-claim)', () => {
         const rec: RawConversion = { ...base, externalId: 'o-13', consent: 'unknown' }
         const row = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase').csv.split('\n')[1].split(',')
-        expect(row[10]).toBe('UNSPECIFIED')
-        expect(row[11]).toBe('UNSPECIFIED')
+        expect(row[8]).toBe('UNSPECIFIED')
+        expect(row[9]).toBe('UNSPECIFIED')
     })
 
     it('defaults to UNSPECIFIED when consent is absent', () => {
         const row = buildGoogleConversionsCsv([base], 'HaloTrack Purchase').csv.split('\n')[1].split(',')
-        expect(row[10]).toBe('UNSPECIFIED')
-        expect(row[11]).toBe('UNSPECIFIED')
+        expect(row[8]).toBe('UNSPECIFIED')
+        expect(row[9]).toBe('UNSPECIFIED')
     })
 
     it('skips a row whose per-record consent is denied', () => {
@@ -162,26 +118,5 @@ describe('buildGoogleConversionsCsv', () => {
         const { rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Purchase')
         expect(rowCount).toBe(0)
         expect(skippedCount).toBe(1)
-    })
-})
-
-describe('enhanced-conversion hashing', () => {
-    it('hashEmail trims and lowercases before hashing', () => {
-        expect(hashEmail('  Foo@Bar.COM ')).toBe(sha256Hex('foo@bar.com'))
-    })
-    it('hashEmail returns empty for whitespace-only input', () => {
-        expect(hashEmail('   ')).toBe('')
-    })
-    it('normalizePhoneE164 adds country code to a bare 9-digit CZ mobile', () => {
-        expect(normalizePhoneE164('777 123 456')).toBe('+420777123456')
-    })
-    it('normalizePhoneE164 strips a 00 international prefix', () => {
-        expect(normalizePhoneE164('00420777123456')).toBe('+420777123456')
-    })
-    it('normalizePhoneE164 keeps an already-+prefixed number', () => {
-        expect(normalizePhoneE164('+420777123456')).toBe('+420777123456')
-    })
-    it('hashPhone returns empty when there are no digits', () => {
-        expect(hashPhone('')).toBe('')
     })
 })

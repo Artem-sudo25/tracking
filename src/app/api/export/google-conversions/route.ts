@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     if (useLeads) {
         const { data, error } = await supabase
             .from('leads')
-            .select('external_lead_id, lead_value, currency, created_at, session_id, email, phone, attribution_data')
+            .select('external_lead_id, lead_value, currency, created_at, session_id, attribution_data')
             .eq('client_id', CLIENT_ID)
             .gte('created_at', since)
             .order('created_at', { ascending: true })
@@ -113,14 +113,12 @@ export async function GET(request: NextRequest) {
                 createdAt: l.created_at,
                 sessionId: l.session_id ?? l.attribution_data?.session_id ?? null,
                 clickIds: l.attribution_data?.click_ids ?? {},
-                email: l.email,
-                phone: l.phone,
             })
         }
     } else {
         const { data, error } = await supabase
             .from('orders')
-            .select('external_order_id, total_amount, currency, created_at, session_id, customer_email, customer_phone, attribution_data')
+            .select('external_order_id, total_amount, currency, created_at, session_id, attribution_data')
             .eq('client_id', CLIENT_ID)
             .gte('created_at', since)
             .order('created_at', { ascending: true })
@@ -133,8 +131,6 @@ export async function GET(request: NextRequest) {
                 createdAt: o.created_at,
                 sessionId: o.session_id ?? o.attribution_data?.session_id ?? null,
                 clickIds: o.attribution_data?.click_ids ?? {},
-                email: o.customer_email,
-                phone: o.customer_phone,
             })
         }
     }

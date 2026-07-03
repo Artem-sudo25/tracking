@@ -1,27 +1,20 @@
 // src/lib/google-conversions.ts
 // Pure builders for the Google Ads offline conversion CSV (import conversions
-// from clicks + enhanced conversions). Kept free of DB/IO so they can be
-// unit-tested and reused by both the manual dashboard export and the
-// scheduled-pull endpoint.
+// from clicks). Kept free of DB/IO so they can be unit-tested and reused by both
+// the manual dashboard export and the scheduled-pull endpoint.
 //
 // Format: https://support.google.com/google-ads/answer/7014069
 // One click identifier per row — gclid preferred, then gbraid, then wbraid
-// (iOS/app clicks often carry only gbraid).
+// (iOS/app clicks often carry only gbraid). Rows with NO click id are skipped —
+// the Google Ads "track conversions from clicks" action matches on click ids
+// only (it has no email/phone match field), so click-id-less rows can't match
+// and Google rejects them. Conversions whose session withdrew ad consent are
+// skipped regardless.
 //
-// Enhanced conversions: each row may also carry a hashed Email + Phone Number.
-// These let Google match orders whose purchasing session had NO click id (e.g.
-// the customer clicked the ad on their phone but bought on a laptop). To match
-// rows that have ONLY hashed data and no click id, the Google Ads conversion
-// action must have "Enhanced conversions for leads" enabled — otherwise Google
-// ignores the user-data columns and rejects those click-id-less rows (harmless;
-// they're skipped, never double-counted).
-//
-// A row is emitted when it has ANY usable identifier (click id OR email OR
-// phone). Rows with none are skipped — Google can't match them. Conversions
-// whose session withdrew ad consent are skipped regardless (no identifiers, no
-// PII, ever leave for a denied user).
-
-import { createHash } from 'crypto'
+// (We previously also emitted hashed email/phone for cross-device matching, but
+// the click-based import action provides no field to map them to, so it was
+// removed — see C6/C8 in the plan. Cross-device recovery would require a
+// separate Enhanced Conversions for Leads action.)
 
 export interface ClickIdSet {
     gclid?: string | null
@@ -36,8 +29,6 @@ export interface RawConversion {
     createdAt: string        // ISO timestamp
     sessionId: string | null
     clickIds: ClickIdSet
-    email?: string | null    // raw; hashed here
-    phone?: string | null    // raw; hashed here
     // The session's HaloTrack consent_status. 'denied' rows are excluded
     // entirely; 'granted'/'unknown' map to the per-row consent columns below.
     consent?: 'granted' | 'unknown' | 'denied' | null
@@ -58,8 +49,6 @@ const HEADERS = [
     'Conversion Value',
     'Conversion Currency',
     'Order ID',
-    'Email',
-    'Phone Number',
     'Ad User Data Consent',
     'Ad Personalization Consent',
 ]
@@ -94,8 +83,8 @@ export function buildGoogleConversionsCsv(
     let skippedCount = 0
 
     for (const r of records) {
-        // Compliance: never upload click ids OR hashed PII for denied sessions.
-        // Denial can arrive per-record (r.consent) or via the deniedSessions set.
+        // Compliance: never upload click ids for denied sessions. Denial can
+        // arrive per-record (r.consent) or via the deniedSessions set.
         const denied =
             r.consent === 'denied' || (r.sessionId != null && deniedSessions.has(r.sessionId))
         if (denied) {
@@ -103,12 +92,9 @@ export function buildGoogleConversionsCsv(
             continue
         }
 
+        // This action matches on click ids only — skip rows without one.
         const picked = pickClickId(r.clickIds)
-        const emailHash = r.email ? hashEmail(r.email) : ''
-        const phoneHash = r.phone ? hashPhone(r.phone) : ''
-
-        // Need at least one thing Google can match on.
-        if (!picked && !emailHash && !phoneHash) {
+        if (!picked) {
             skippedCount++
             continue
         }
@@ -116,16 +102,14 @@ export function buildGoogleConversionsCsv(
         const consent = consentCell(r.consent)
 
         rows.push([
-            picked?.column === 'gclid' ? picked.value : '',
-            picked?.column === 'gbraid' ? picked.value : '',
-            picked?.column === 'wbraid' ? picked.value : '',
+            picked.column === 'gclid' ? picked.value : '',
+            picked.column === 'gbraid' ? picked.value : '',
+            picked.column === 'wbraid' ? picked.value : '',
             conversionName,
             formatGoogleTime(r.createdAt),
             r.value != null ? String(r.value) : '',
             r.currency ?? 'CZK',
             r.externalId,
-            emailHash,
-            phoneHash,
             consent,
             consent,
         ])
@@ -137,34 +121,6 @@ export function buildGoogleConversionsCsv(
     ].join('\n')
 
     return { csv, rowCount: rows.length, skippedCount }
-}
-
-// ─── Enhanced-conversion hashing (Google: SHA-256 of normalized value) ────────
-// Google accepts hex or base64; we use hex (same as the Meta export). Email is
-// trimmed + lowercased; phone is E.164 (+countrycode) before hashing.
-
-function sha256Hex(value: string): string {
-    return createHash('sha256').update(value).digest('hex')
-}
-
-export function hashEmail(email: string): string {
-    const norm = email.trim().toLowerCase()
-    return norm ? sha256Hex(norm) : ''
-}
-
-export function hashPhone(phone: string): string {
-    const norm = normalizePhoneE164(phone)
-    return norm.length > 1 ? sha256Hex(norm) : '' // '+' alone = no digits
-}
-
-// E.164: leading '+' and country code, digits only otherwise. Czech mobile
-// numbers arrive as 9 bare digits — prepend 420. Mirrors the Meta export's
-// normalizer but keeps the '+' Google's spec requires.
-export function normalizePhoneE164(phone: string): string {
-    let digits = phone.replace(/\D/g, '')
-    if (digits.startsWith('00')) digits = digits.slice(2)
-    else if (digits.length === 9) digits = '420' + digits
-    return digits ? '+' + digits : ''
 }
 
 // Wrap cells containing commas, quotes, or newlines (RFC 4180).
