@@ -29,9 +29,11 @@ export async function sendLeadToGoogle(params: GoogleLeadParams) {
                     form_type: lead.form_type || 'contact',
                     transaction_id: lead.external_id,
                     engagement_time_msec: 1,
-                    // GA4's own session id (from the _ga_<container> cookie) —
-                    // without it the event has no acquisition context and
-                    // reports as "Unassigned"
+                    // gclid anchors the event to the ad click — without it
+                    // (and with weak session stitching) the event loses
+                    // acquisition context and reports as "Unassigned"
+                    ...(session.gclid ? { gclid: session.gclid } : {}),
+                    // GA4's own session id (from the _ga_<container> cookie)
                     ...(session.ga_session_id ? { session_id: session.ga_session_id } : {}),
                 },
             }],

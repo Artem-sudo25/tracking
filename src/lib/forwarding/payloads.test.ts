@@ -133,8 +133,9 @@ describe('sendLeadToGoogle', () => {
         expect(params.session_id).toBe('1719930000')
         expect(params.engagement_time_msec).toBe(1)
         expect(params.transaction_id).toBe('lead-abc-123')
-        // gclid is not an MP attribution mechanism — must not be sent
-        expect('gclid' in params).toBe(false)
+        // gclid anchors the event to the ad click — restored 2026-07 after
+        // its June removal sent conversions to "Unassigned"
+        expect(params.gclid).toBe('Cj0KCQtest')
         // Google requires E.164 before hashing
         expect(result.payload!.user_data.sha256_phone_number).toBe(sha('+420777123456'))
     })
@@ -145,6 +146,14 @@ describe('sendLeadToGoogle', () => {
             lead, measurementId: 'G-TEST', apiSecret: 'SECRET',
         })
         expect('session_id' in result.payload!.events[0].params).toBe(false)
+    })
+
+    it('omits gclid when the session has none (organic / non-Google traffic)', async () => {
+        const result = await sendLeadToGoogle({
+            session: { ...session, gclid: null },
+            lead, measurementId: 'G-TEST', apiSecret: 'SECRET',
+        })
+        expect('gclid' in result.payload!.events[0].params).toBe(false)
     })
 })
 
@@ -168,7 +177,7 @@ describe('sendToGoogle (purchase)', () => {
         expect(params.transaction_id).toBe('o-1001')
         expect(params.session_id).toBe('1719930000')
         expect(params.engagement_time_msec).toBe(1)
-        expect('gclid' in params).toBe(false)
+        expect(params.gclid).toBe('Cj0KCQtest')
         expect(result.payload!.user_data.sha256_phone_number).toBe(sha('+420777123456'))
         expect(params.items).toEqual([{ item_id: 'p1', item_name: 'Product', price: 1500, quantity: 1 }])
     })
