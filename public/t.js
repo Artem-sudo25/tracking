@@ -170,15 +170,11 @@
     window.addEventListener('CookiebotOnConsentReady', fireOnce, { once: true });
 
     // Custom banner support: the site dispatches `halo:consent-changed` after
-    // saving halo_cookie_consent. First choice fires tracking; a change after
-    // the initial fire re-sends the touch so the session's consent updates.
+    // saving halo_cookie_consent. First choice fires tracking. Consent changes
+    // after the initial fire are NOT re-sent — pre-Tier2 behavior, restored
+    // 2026-07 for the attribution experiment.
     window.addEventListener('halo:consent-changed', function () {
-        if (!hasFired) {
-            fireOnce();
-        } else {
-            data.consent = getConsent();
-            post(ENDPOINT, data).catch(function () {});
-        }
+        if (!hasFired) fireOnce();
     });
 
     if (typeof window.Cookiebot !== 'undefined') {

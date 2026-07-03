@@ -58,15 +58,10 @@ export async function POST(request: NextRequest) {
         const customParams = extractCustomParams(body.custom_params, body.landing)
 
         // === CONSENT DENIED ===
+        // Pre-Tier2 behavior (restored 2026-07 for the attribution experiment):
+        // consent is captured once at session creation and never updated, so a
+        // denial after the initial page load does NOT stop forwarding.
         if (consentStatus === 'denied') {
-            // If a session exists from before the visitor denied (e.g. consent
-            // revoked after page load), record the denial so forwarding stops.
-            if (sessionId) {
-                await supabase.from('sessions')
-                    .update({ consent_status: 'denied', updated_at: new Date().toISOString() })
-                    .eq('session_id', sessionId)
-                    .eq('client_id', CLIENT_ID)
-            }
             if (body.utm_source || body.referrer) {
                 await supabase.from('anon_events').insert({
                     client_id: CLIENT_ID,
@@ -226,21 +221,11 @@ export async function POST(request: NextRequest) {
             if (Object.keys(customParams).length > 0) updateData.custom_params = customParams
             if (body.ga_client_id) updateData.ga_client_id = body.ga_client_id
             if (body.ga_session_id) updateData.ga_session_id = body.ga_session_id
-            if (consentStatus === 'granted') updateData.consent_status = 'granted'
 
             await supabase.from('sessions')
                 .update(updateData)
                 .eq('session_id', sessionId)
                 .eq('client_id', CLIENT_ID)
-        } else if (consentStatus === 'granted') {
-            // No new marketing data, but consent may have been granted after
-            // page load (banner accepted) — upgrade unknown → granted so
-            // conversions on this session can forward.
-            await supabase.from('sessions')
-                .update({ consent_status: 'granted', updated_at: new Date().toISOString() })
-                .eq('session_id', sessionId)
-                .eq('client_id', CLIENT_ID)
-                .neq('consent_status', 'granted')
         }
 
         // === RECORD TOUCHPOINT (JOURNEY) ===
