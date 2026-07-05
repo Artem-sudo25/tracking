@@ -207,6 +207,15 @@ export function RecentLeads({
             demo: 'Demo',
             'free-trial': 'Free Trial',
             quote: 'Quote',
+            // Rentez
+            home_short: 'Home Page',
+            long_term_rental_short: 'Long-Term Rental',
+            short_term_rental_short: 'Short-Term Rental',
+            about_us_short: 'About Us',
+            contact_short: 'Contact Page',
+            comparison_short: 'Comparison Page',
+            calculator_short: 'Calculator (Callback)',
+            calculator_full: 'Calculator (Full)',
         }
 
         if (!formType) {
