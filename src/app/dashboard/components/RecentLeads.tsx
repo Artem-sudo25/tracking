@@ -347,6 +347,13 @@ export function RecentLeads({
                                             <div className="mt-4 space-y-3 border-t pt-4 animate-in slide-in-from-top-2">
                                                 <div className="grid gap-3 md:grid-cols-2">
                                                     <div className="flex items-start gap-2">
+                                                        <Globe className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">Page / Form</p>
+                                                            <p className="text-sm">{getFormTypeLabel(lead.form_type)}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-start gap-2">
                                                         <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" />
                                                         <div>
                                                             <p className="text-xs text-muted-foreground">Email</p>
