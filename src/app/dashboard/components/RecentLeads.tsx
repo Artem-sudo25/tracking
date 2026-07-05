@@ -494,7 +494,7 @@ export function RecentLeads({
                                                         <div className="grid gap-2 text-xs md:grid-cols-2">
                                                             {Object.entries(lead.custom_fields).map(([key, value]) => (
                                                                 <div key={key}>
-                                                                    <span className="capitalize text-muted-foreground">{key}: </span>
+                                                                    <span className="capitalize text-muted-foreground">{key.replace(/_/g, ' ')}: </span>
                                                                     <span className="font-medium">{String(value)}</span>
                                                                 </div>
                                                             ))}
