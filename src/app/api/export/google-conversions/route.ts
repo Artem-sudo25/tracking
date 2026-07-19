@@ -13,6 +13,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildGoogleConversionsCsv, type RawConversion } from '@/lib/google-conversions'
+import { isAuthorized, resolveWindow } from '@/lib/google-export-auth'
+import { fetchConsentBySession } from '@/lib/session-consent'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,69 +24,18 @@ const supabase = createClient(
 const CLIENT_ID = process.env.CLIENT_ID!
 
 const DEFAULT_DAYS = 7
-const MAX_DAYS = 90
-
-function timingSafeEqual(a: string, b: string): boolean {
-    if (a.length !== b.length) return false
-    let diff = 0
-    for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-    return diff === 0
-}
-
-// The provided secret can arrive two ways: ?key=… (browser test) or HTTP Basic
-// Auth (what Google Ads' scheduled HTTPS upload sends). For Basic Auth we check
-// the password component against GOOGLE_EXPORT_KEY; the username is ignored.
-function extractProvidedKey(request: NextRequest): string {
-    const fromQuery = request.nextUrl.searchParams.get('key')
-    if (fromQuery) return fromQuery
-
-    const auth = request.headers.get('authorization') ?? ''
-    if (auth.startsWith('Basic ')) {
-        try {
-            const decoded = Buffer.from(auth.slice(6), 'base64').toString('utf8')
-            const sep = decoded.indexOf(':')
-            return sep >= 0 ? decoded.slice(sep + 1) : decoded
-        } catch {
-            return ''
-        }
-    }
-    return ''
-}
-
-// Map each session_id → its consent_status, so the builder can both exclude
-// 'denied' rows and stamp the per-row consent columns (granted/unknown).
-type Consent = 'granted' | 'unknown' | 'denied'
-async function sessionConsent(sessionIds: string[]): Promise<Map<string, Consent>> {
-    const ids = [...new Set(sessionIds.filter(Boolean))]
-    if (ids.length === 0) return new Map()
-
-    const { data } = await supabase
-        .from('sessions')
-        .select('session_id, consent_status')
-        .eq('client_id', CLIENT_ID)
-        .in('session_id', ids)
-
-    return new Map((data ?? []).map(r => [r.session_id, r.consent_status as Consent]))
-}
 
 export async function GET(request: NextRequest) {
-    const key = process.env.GOOGLE_EXPORT_KEY
-    const provided = extractProvidedKey(request)
-    if (!key || !provided || !timingSafeEqual(provided, key)) {
+    if (!isAuthorized(request, process.env.GOOGLE_EXPORT_KEY)) {
         return new NextResponse('Unauthorized', {
             status: 401,
             headers: { 'WWW-Authenticate': 'Basic realm="halotrack"' },
         })
     }
 
-    const daysParam = parseInt(request.nextUrl.searchParams.get('days') ?? '', 10)
-    const days = Number.isFinite(daysParam)
-        ? Math.min(Math.max(daysParam, 1), MAX_DAYS)
-        : DEFAULT_DAYS
+    const { since } = resolveWindow(request, DEFAULT_DAYS)
     const conversionName =
         request.nextUrl.searchParams.get('name') || 'HaloTrack Purchase'
-
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
 
     // Client type decides the source table (mirrors the dashboard convention).
     const { data: clientRow } = await supabase
@@ -135,7 +86,7 @@ export async function GET(request: NextRequest) {
         }
     }
 
-    const consentBySession = await sessionConsent(records.map(r => r.sessionId ?? ''))
+    const consentBySession = await fetchConsentBySession(supabase, CLIENT_ID, records.map(r => r.sessionId))
     for (const r of records) {
         r.consent = r.sessionId ? consentBySession.get(r.sessionId) ?? null : null
     }

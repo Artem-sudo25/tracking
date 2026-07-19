@@ -13,9 +13,35 @@ import type {
     LeadsDashboardData,
     PipelineMetricsData,
 } from '@/types/dashboard'
+import { fetchConsentBySession } from '@/lib/session-consent'
 
 const DEFAULT_LEADS_PAGE_SIZE = 20
-const leadListSelect = 'id, name, email, phone, form_type, lead_value, status, created_at, message, custom_fields, attribution_data'
+const leadListSelect = 'id, name, email, phone, form_type, lead_value, status, created_at, message, custom_fields, attribution_data, session_id, sent_to_google, manual_google_push_at, manual_google_push_value'
+
+// Consent lives on sessions.consent_status, not on the lead — shares the
+// batched lookup (src/lib/session-consent.ts) with the automatic export
+// route's enforcement-side check, so both stay in sync. Informational only
+// here (surfaced in the dashboard UI so a user can judge a lead before
+// manually pushing it — see pushLeadToGoogleAds); it never gates anything
+// client-side.
+export async function attachConsentStatus<
+    T extends { session_id?: string | null; attribution_data?: LeadAttributionData | null }
+>(leads: T[], clientId: string): Promise<(T & { consent_status: 'granted' | 'unknown' | 'denied' | null })[]> {
+    const supabase = await createClient()
+    const consentBySession = await fetchConsentBySession(
+        supabase,
+        clientId,
+        leads.map(l => l.session_id ?? l.attribution_data?.session_id ?? null)
+    )
+
+    return leads.map(l => {
+        const sessionId = l.session_id ?? l.attribution_data?.session_id ?? null
+        return {
+            ...l,
+            consent_status: sessionId ? consentBySession.get(sessionId) ?? null : null,
+        }
+    })
+}
 
 interface TouchpointRow {
     session_id: string
@@ -332,6 +358,8 @@ export async function getLeadsDashboardData(
         .order('created_at', { ascending: false })
         .range(0, DEFAULT_LEADS_PAGE_SIZE - 1)
 
+    const recentLeadsWithConsent = await attachConsentStatus((recentLeads || []) as LeadListItem[], clientId)
+
     return {
         stats: {
             totalLeads,
@@ -343,7 +371,7 @@ export async function getLeadsDashboardData(
         },
         leadsByFormType,
         leadsBySource: leadsWithROI,
-        recentLeads: (recentLeads || []) as LeadListItem[],
+        recentLeads: recentLeadsWithConsent,
         recentLeadsTotal: totalLeads,
         chartData: dailyLeads,
     }
@@ -390,7 +418,7 @@ export async function getLeadListPage(
     }
 
     const total = count || 0
-    const leads = (data || []) as LeadListItem[]
+    const leads = await attachConsentStatus((data || []) as LeadListItem[], clientId)
 
     return {
         leads,
@@ -468,6 +496,122 @@ export async function updateLeadStatus(
     revalidatePath('/dashboard')
     revalidatePath('/dashboard/leads')
     return { success: true }
+}
+
+type PushLeadResult =
+    | { success: true; pushedAt: string; pushedValue: number | null }
+    | { success: false; error: string }
+
+// Manually push a lead into the separate "HaloTrack Manual Push" Google Ads
+// conversion feed (src/app/api/export/google-conversions-manual). This just
+// marks the lead — the actual upload happens on Google's next scheduled pull.
+//
+// manual_google_push_at is set once and never overwritten on later calls (so
+// the CSV's Conversion Time stays stable across re-pulls for Google's
+// click-id+name+time dedup) — enforced here via a single atomic conditional
+// UPDATE (WHERE manual_google_push_at IS NULL) rather than a SELECT-then-
+// UPDATE, which would race under two concurrent first-time pushes for the
+// same lead. manual_google_push_updated_at is bumped on every call (push AND
+// later value edits) so the export route's rolling window still picks up an
+// edit made long after the original push — see the migration comment.
+//
+// Explicit PushLeadResult return type (rather than relying on inference) so
+// `success` is a true discriminant — without it, TS widens `success: true` /
+// `success: false` to plain `boolean` across the multiple return statements,
+// and `!result.success` no longer narrows away the error-shaped variant,
+// leaving `result.pushedAt` typed `string | undefined` at every call site.
+export async function pushLeadToGoogleAds(leadId: string, value?: number): Promise<PushLeadResult> {
+    const supabase = await createClient()
+
+    const {
+        data: { user },
+        error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+        return { success: false, error: 'Not authenticated' }
+    }
+
+    const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('client_id')
+        .eq('user_id', user.id)
+        .single()
+
+    if (clientError || !client) {
+        return { success: false, error: 'Client not found' }
+    }
+
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_KEY
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+
+    if (!serviceRoleKey || !supabaseUrl) {
+        return { success: false, error: 'Missing Supabase server configuration' }
+    }
+
+    const adminClient = createSupabaseClient(supabaseUrl, serviceRoleKey)
+    const now = new Date().toISOString()
+
+    // Atomic first-push attempt: only matches if manual_google_push_at is
+    // still null. Postgres row-level locking means at most one concurrent
+    // call can match this WHERE clause for a given lead.
+    const { data: firstPush, error: firstPushError } = await adminClient
+        .from('leads')
+        .update({
+            manual_google_push_at: now,
+            manual_google_push_updated_at: now,
+            manual_google_push_value: value ?? null,
+        })
+        .eq('client_id', client.client_id)
+        .eq('id', leadId)
+        .is('manual_google_push_at', null)
+        .select('id, manual_google_push_at, manual_google_push_value')
+        .maybeSingle()
+
+    if (firstPushError) {
+        console.error('Error pushing lead to Google Ads:', firstPushError)
+        return { success: false, error: firstPushError.message }
+    }
+
+    if (firstPush) {
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/leads')
+        return {
+            success: true,
+            pushedAt: firstPush.manual_google_push_at as string,
+            pushedValue: firstPush.manual_google_push_value as number | null,
+        }
+    }
+
+    // Already pushed (by this call's lead or a concurrent one that won the
+    // race above) — update the value only, never touch manual_google_push_at.
+    const { data, error } = await adminClient
+        .from('leads')
+        .update({
+            manual_google_push_value: value ?? null,
+            manual_google_push_updated_at: now,
+        })
+        .eq('client_id', client.client_id)
+        .eq('id', leadId)
+        .select('id, manual_google_push_at, manual_google_push_value')
+        .maybeSingle()
+
+    if (error) {
+        console.error('Error pushing lead to Google Ads:', error)
+        return { success: false, error: error.message }
+    }
+
+    if (!data) {
+        return { success: false, error: 'Lead not found or update not permitted' }
+    }
+
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/leads')
+    return {
+        success: true,
+        pushedAt: data.manual_google_push_at as string,
+        pushedValue: data.manual_google_push_value as number | null,
+    }
 }
 
 export async function getPipelineMetrics(

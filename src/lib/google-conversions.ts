@@ -9,7 +9,12 @@
 // the Google Ads "track conversions from clicks" action matches on click ids
 // only (it has no email/phone match field), so click-id-less rows can't match
 // and Google rejects them. Conversions whose session withdrew ad consent are
-// skipped regardless.
+// skipped UNLESS options.unsafeSkipConsentGate is explicitly true (default
+// false — safe by default). Only the manual-push feed passes
+// unsafeSkipConsentGate: true, and only because that feed is gated by an
+// explicit per-lead human decision in the dashboard UI (which surfaces
+// consent state before a push), not a blind bulk export. Do NOT reuse
+// unsafeSkipConsentGate: true for any unattended/scheduled feed.
 //
 // (We previously also emitted hashed email/phone for cross-device matching, but
 // the click-based import action provides no field to map them to, so it was
@@ -40,7 +45,19 @@ export interface GoogleCsvResult {
     skippedCount: number
 }
 
-const HEADERS = [
+export interface BuildGoogleConversionsCsvOptions {
+    // Default false (safe, current live behaviour for the automatic feed):
+    // drop denied-consent rows and emit the two per-row consent columns. Set
+    // true ONLY for a feed where a human explicitly reviewed each row's
+    // consent state before triggering the push (currently: the manual-push
+    // feed only) — never for an unattended/scheduled feed. The name is
+    // deliberately loud: this is not a generic toggle, it's an opt-in bypass
+    // of a compliance control. The click-id requirement below is unaffected
+    // either way; it's a matching constraint, not a consent one.
+    unsafeSkipConsentGate?: boolean
+}
+
+const BASE_HEADERS = [
     'Google Click ID',
     'GBRAID',
     'WBRAID',
@@ -49,9 +66,9 @@ const HEADERS = [
     'Conversion Value',
     'Conversion Currency',
     'Order ID',
-    'Ad User Data Consent',
-    'Ad Personalization Consent',
 ]
+const CONSENT_HEADERS = ['Ad User Data Consent', 'Ad Personalization Consent']
+const HEADERS = [...BASE_HEADERS, ...CONSENT_HEADERS]
 
 // Map HaloTrack's single consent_status to Google's per-row consent value.
 // 'granted' → GRANTED; anything else we send (only 'unknown' survives the
@@ -73,23 +90,29 @@ export function pickClickId(
 
 // Build the Google Ads offline-conversion CSV. `deniedSessions` holds session
 // ids whose consent_status is 'denied' (granted + unknown are uploadable — the
-// agreed grey-area policy); their conversions are excluded entirely.
+// agreed grey-area policy); their conversions are excluded entirely unless
+// options.unsafeSkipConsentGate is true.
 export function buildGoogleConversionsCsv(
     records: RawConversion[],
     conversionName: string,
-    deniedSessions: ReadonlySet<string> = new Set()
+    deniedSessions: ReadonlySet<string> = new Set(),
+    options: BuildGoogleConversionsCsvOptions = {}
 ): GoogleCsvResult {
+    const skipConsentGate = options.unsafeSkipConsentGate ?? false
+    const headers = skipConsentGate ? BASE_HEADERS : HEADERS
     const rows: string[][] = []
     let skippedCount = 0
 
     for (const r of records) {
-        // Compliance: never upload click ids for denied sessions. Denial can
-        // arrive per-record (r.consent) or via the deniedSessions set.
-        const denied =
-            r.consent === 'denied' || (r.sessionId != null && deniedSessions.has(r.sessionId))
-        if (denied) {
-            skippedCount++
-            continue
+        if (!skipConsentGate) {
+            // Compliance: never upload click ids for denied sessions. Denial
+            // can arrive per-record (r.consent) or via the deniedSessions set.
+            const denied =
+                r.consent === 'denied' || (r.sessionId != null && deniedSessions.has(r.sessionId))
+            if (denied) {
+                skippedCount++
+                continue
+            }
         }
 
         // This action matches on click ids only — skip rows without one.
@@ -99,9 +122,7 @@ export function buildGoogleConversionsCsv(
             continue
         }
 
-        const consent = consentCell(r.consent)
-
-        rows.push([
+        const row = [
             picked.column === 'gclid' ? picked.value : '',
             picked.column === 'gbraid' ? picked.value : '',
             picked.column === 'wbraid' ? picked.value : '',
@@ -110,13 +131,18 @@ export function buildGoogleConversionsCsv(
             r.value != null ? String(r.value) : '',
             r.currency ?? 'CZK',
             r.externalId,
-            consent,
-            consent,
-        ])
+        ]
+
+        if (!skipConsentGate) {
+            const consent = consentCell(r.consent)
+            row.push(consent, consent)
+        }
+
+        rows.push(row)
     }
 
     const csv = [
-        HEADERS.join(','),
+        headers.join(','),
         ...rows.map(row => row.map(escapeCsvCell).join(',')),
     ].join('\n')
 

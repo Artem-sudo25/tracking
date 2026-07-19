@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { LeadsManager } from '../components/LeadsManager'
-import { getPipelineMetrics } from '@/app/actions/dashboard'
+import { getPipelineMetrics, attachConsentStatus } from '@/app/actions/dashboard'
 
 export default async function LeadsPage() {
     const supabase = await createClient()
@@ -24,11 +24,13 @@ export default async function LeadsPage() {
     }
 
     // Fetch initial leads
-    const { data: leads } = await supabase
+    const { data: leadsData } = await supabase
         .from('leads')
         .select('*')
         .eq('client_id', client.client_id)
         .order('created_at', { ascending: false })
+
+    const leads = await attachConsentStatus(leadsData || [], client.client_id)
 
     // Fetch metrics
     const metrics = await getPipelineMetrics(client.client_id)

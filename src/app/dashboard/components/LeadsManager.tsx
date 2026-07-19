@@ -12,6 +12,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Filter, Search } from 'lucide-react'
 import { updateLeadStatus } from '@/app/actions/dashboard'
+import { pickClickId } from '@/lib/google-conversions'
+import { useManualGooglePush, consentLabel } from '@/hooks/useManualGooglePush'
 import { PipelineMetrics } from './PipelineMetrics'
 import type { LeadAttributionData, LeadStatus, LeadTouchData, PipelineMetricsData } from '@/types/dashboard'
 
@@ -25,6 +27,10 @@ interface Lead {
     created_at: string
     deal_value?: number | null
     attribution_data?: LeadAttributionData | null
+    sent_to_google?: boolean | null
+    manual_google_push_at?: string | null
+    manual_google_push_value?: number | null
+    consent_status?: 'granted' | 'unknown' | 'denied' | null
 }
 
 interface LeadsManagerProps {
@@ -58,6 +64,9 @@ export function LeadsManager({ initialLeads, metrics }: LeadsManagerProps) {
     const [dealValue, setDealValue] = useState('')
     const [savingLeadId, setSavingLeadId] = useState<string | null>(null)
     const [isRefreshing, startRefreshTransition] = useTransition()
+    const manualPush = useManualGooglePush((leadId, patch) => {
+        setLeads((prev) => prev.map((lead) => (lead.id === leadId ? { ...lead, ...patch } : lead)))
+    })
 
     const filteredLeads = leads.filter((lead) => {
         const query = deferredSearchQuery.toLowerCase()
@@ -227,12 +236,13 @@ export function LeadsManager({ initialLeads, metrics }: LeadsManagerProps) {
                                     <TableHead>Status</TableHead>
                                     <TableHead>Attribution</TableHead>
                                     <TableHead>Value</TableHead>
+                                    <TableHead>Google Ads</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {filteredLeads.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                                             No leads found.
                                         </TableCell>
                                     </TableRow>
@@ -318,6 +328,77 @@ export function LeadsManager({ initialLeads, metrics }: LeadsManagerProps) {
                                                             {new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(lead.deal_value)}
                                                         </span>
                                                     ) : '-'}
+                                                </TableCell>
+                                                <TableCell className="text-sm">
+                                                    {(() => {
+                                                        const clickId = pickClickId(lead.attribution_data?.click_ids || {})
+                                                        const isPushed = Boolean(lead.manual_google_push_at)
+                                                        const isEditing = manualPush.editingIds.has(lead.id) || !isPushed
+                                                        const isPushing = manualPush.pushingIds.has(lead.id)
+                                                        const pushFb = manualPush.feedback[lead.id]
+
+                                                        return (
+                                                            <div className="space-y-1">
+                                                                {isPushed && !isEditing && (
+                                                                    <div className="flex items-center gap-1 text-xs">
+                                                                        <span className="font-medium text-green-600">
+                                                                            Pushed ✓{' '}
+                                                                            {lead.manual_google_push_value != null
+                                                                                ? new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(lead.manual_google_push_value)
+                                                                                : 'no value'}
+                                                                        </span>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="h-6 px-1 text-xs"
+                                                                            onClick={() => manualPush.startEditing(lead.id, lead.manual_google_push_value)}
+                                                                        >
+                                                                            Edit
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+
+                                                                {!clickId ? (
+                                                                    !isPushed && (
+                                                                        <span className="text-xs text-muted-foreground">Not available</span>
+                                                                    )
+                                                                ) : (
+                                                                    isEditing && (
+                                                                        <div className="space-y-1">
+                                                                            <div className="flex items-center gap-1">
+                                                                                <input
+                                                                                    type="number"
+                                                                                    placeholder="Value"
+                                                                                    className="h-7 w-20 rounded-md border bg-background px-1.5 text-xs"
+                                                                                    value={manualPush.valueDrafts[lead.id] ?? ''}
+                                                                                    onChange={(event) => manualPush.setDraft(lead.id, event.target.value)}
+                                                                                />
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    variant="outline"
+                                                                                    className="h-7 px-2 text-xs"
+                                                                                    onClick={() => void manualPush.push(lead.id)}
+                                                                                    disabled={isPushing}
+                                                                                >
+                                                                                    {isPushing ? '...' : isPushed ? 'Update' : 'Push'}
+                                                                                </Button>
+                                                                            </div>
+                                                                            <div className="text-xs text-muted-foreground">
+                                                                                Consent: {consentLabel(lead.consent_status)}
+                                                                            </div>
+                                                                        </div>
+                                                                    )
+                                                                )}
+
+                                                                {lead.sent_to_google && (
+                                                                    <div className="text-xs text-amber-600">Sent via GA4</div>
+                                                                )}
+                                                                {pushFb?.tone === 'error' && (
+                                                                    <div className="text-xs text-red-600">{pushFb.text}</div>
+                                                                )}
+                                                            </div>
+                                                        )
+                                                    })()}
                                                 </TableCell>
                                             </TableRow>
                                         )

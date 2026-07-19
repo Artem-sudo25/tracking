@@ -2,6 +2,8 @@
 
 import { useRef, useState, useTransition } from 'react'
 import { getLeadListPage } from '@/app/actions/dashboard'
+import { pickClickId } from '@/lib/google-conversions'
+import { useManualGooglePush, consentLabel } from '@/hooks/useManualGooglePush'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -96,6 +98,15 @@ export function RecentLeads({
     const [isCardExpanded, setIsCardExpanded] = useState(true)
     const [loadError, setLoadError] = useState<string | null>(null)
     const [isPending, startTransition] = useTransition()
+    const manualPush = useManualGooglePush((leadId, patch) => {
+        setLeadPages((prev) => ({
+            ...prev,
+            [scope]: {
+                ...prev[scope],
+                leads: prev[scope].leads.map((l) => (l.id === leadId ? { ...l, ...patch } : l)),
+            },
+        }))
+    })
     const latestRequestId = useRef(0)
     const visibleLeads = leadPages[scope].leads
     const totalLeads = leadPages[scope].total
@@ -452,6 +463,85 @@ export function RecentLeads({
                                                         </div>
                                                     </div>
                                                 )}
+
+                                                {(() => {
+                                                    const clickId = pickClickId(lead.attribution_data?.click_ids || {})
+                                                    const isPushed = Boolean(lead.manual_google_push_at)
+                                                    const isEditing = manualPush.editingIds.has(lead.id) || !isPushed
+                                                    const isPushing = manualPush.pushingIds.has(lead.id)
+                                                    const feedback = manualPush.feedback[lead.id]
+
+                                                    return (
+                                                        <div className="space-y-2 border-t pt-3">
+                                                            <p className="text-xs font-medium text-muted-foreground">Google Ads (Manual Push)</p>
+
+                                                            {isPushed && !isEditing && (
+                                                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                                                    <span className="font-medium text-green-600">
+                                                                        Pushed ✓{' '}
+                                                                        {lead.manual_google_push_value != null
+                                                                            ? new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(lead.manual_google_push_value)
+                                                                            : 'no value'}
+                                                                    </span>
+                                                                    <span className="text-muted-foreground">
+                                                                        · {formatDistanceToNow(new Date(lead.manual_google_push_at!), { addSuffix: true })}
+                                                                    </span>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-6 px-2 text-xs"
+                                                                        onClick={() => manualPush.startEditing(lead.id, lead.manual_google_push_value)}
+                                                                    >
+                                                                        Edit value
+                                                                    </Button>
+                                                                </div>
+                                                            )}
+
+                                                            {!clickId ? (
+                                                                !isPushed && (
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        No click ID — can&apos;t match in Google Ads
+                                                                    </p>
+                                                                )
+                                                            ) : (
+                                                                isEditing && (
+                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                        <input
+                                                                            type="number"
+                                                                            placeholder="Value (optional)"
+                                                                            className="h-8 w-32 rounded-md border bg-background px-2 text-xs"
+                                                                            value={manualPush.valueDrafts[lead.id] ?? ''}
+                                                                            onChange={(event) => manualPush.setDraft(lead.id, event.target.value)}
+                                                                        />
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            onClick={() => void manualPush.push(lead.id)}
+                                                                            disabled={isPushing}
+                                                                        >
+                                                                            {isPushing
+                                                                                ? 'Pushing...'
+                                                                                : isPushed
+                                                                                    ? 'Update value'
+                                                                                    : 'Push to Google'}
+                                                                        </Button>
+                                                                        <span className="text-xs text-muted-foreground">
+                                                                            Consent: {consentLabel(lead.consent_status)}
+                                                                        </span>
+                                                                    </div>
+                                                                )
+                                                            )}
+
+                                                            {lead.sent_to_google && (
+                                                                <p className="text-xs text-amber-600">Already sent automatically via GA4</p>
+                                                            )}
+
+                                                            {feedback?.tone === 'error' && (
+                                                                <p className="text-xs text-red-600">{feedback.text}</p>
+                                                            )}
+                                                        </div>
+                                                    )
+                                                })()}
 
                                                 {lead.attribution_data?.device && (
                                                     <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">

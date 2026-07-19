@@ -51,6 +51,11 @@ export interface LeadListItem {
   message: string | null
   custom_fields: Record<string, unknown> | null
   attribution_data: LeadAttributionData | null
+  session_id?: string | null
+  sent_to_google?: boolean | null
+  manual_google_push_at?: string | null
+  manual_google_push_value?: number | null
+  consent_status?: 'granted' | 'unknown' | 'denied' | null
 }
 
 export interface LeadsDashboardStats {

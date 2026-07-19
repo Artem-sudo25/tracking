@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
         source: "/api/export/google-conversions.csv",
         destination: "/api/export/google-conversions",
       },
+      {
+        source: "/api/export/google-conversions-manual.csv",
+        destination: "/api/export/google-conversions-manual",
+      },
     ];
   },
 };

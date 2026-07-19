@@ -1,0 +1,15 @@
+<!--
+Insert into catalog/view/theme/esport/template/common/header.twig,
+right before </head> (after the existing "End Google Tag Manager" block, line 63).
+
+Replace HALOTRACK_DOMAIN once the Vercel deployment exists (task: client onboarding).
+Loaded in <head>, non-blocking. NOTE: async does NOT guarantee window.HaloTrack /
+the _halo cookie are ready before SimpleCheckout's checkout JS runs — this is a
+best-effort ordering, not a guarantee. Also requires HALOTRACK_DOMAIN to be a
+first-party subdomain (CNAME), otherwise the _halo cookie never gets set as
+first-party and session_id capture silently fails.
+-->
+<!-- HaloTrack -->
+<script src="https://HALOTRACK_DOMAIN/t.js" async></script>
+<!-- End HaloTrack -->
+</head>

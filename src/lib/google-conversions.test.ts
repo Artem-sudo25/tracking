@@ -119,4 +119,35 @@ describe('buildGoogleConversionsCsv', () => {
         expect(rowCount).toBe(0)
         expect(skippedCount).toBe(1)
     })
+
+    describe('unsafeSkipConsentGate: true (manual-push feed only)', () => {
+        it('omits both consent columns from the header row', () => {
+            const { csv } = buildGoogleConversionsCsv([base], 'HaloTrack Manual Push', new Set(), { unsafeSkipConsentGate: true })
+            expect(csv.split('\n')[0]).toBe(
+                'Google Click ID,GBRAID,WBRAID,Conversion Name,Conversion Time,Conversion Value,Conversion Currency,Order ID'
+            )
+        })
+
+        it('includes a row whose session is in deniedSessions', () => {
+            const denied = new Set(['sess-denied'])
+            const rec = { ...base, externalId: 'o-15', sessionId: 'sess-denied' }
+            const { rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Manual Push', denied, { unsafeSkipConsentGate: true })
+            expect(rowCount).toBe(1)
+            expect(skippedCount).toBe(0)
+        })
+
+        it('includes a row whose per-record consent is denied', () => {
+            const rec: RawConversion = { ...base, externalId: 'o-16', consent: 'denied' }
+            const { rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Manual Push', new Set(), { unsafeSkipConsentGate: true })
+            expect(rowCount).toBe(1)
+            expect(skippedCount).toBe(0)
+        })
+
+        it('still skips rows with no click id (matching constraint, unaffected by unsafeSkipConsentGate)', () => {
+            const rec = { ...base, externalId: 'o-17', clickIds: {} }
+            const { rowCount, skippedCount } = buildGoogleConversionsCsv([rec], 'HaloTrack Manual Push', new Set(), { unsafeSkipConsentGate: true })
+            expect(rowCount).toBe(0)
+            expect(skippedCount).toBe(1)
+        })
+    })
 })
