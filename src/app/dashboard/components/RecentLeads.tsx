@@ -321,6 +321,10 @@ export function RecentLeads({
                                                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                                     <span>{getFormTypeLabel(lead.form_type)}</span>
                                                     <span>•</span>
+                                                    <span title={new Date(lead.created_at).toString()}>
+                                                        {format(new Date(lead.created_at), 'd MMM yyyy, HH:mm')}
+                                                    </span>
+                                                    <span>•</span>
                                                     <span>{formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}</span>
                                                     {summaryTouch?.source && (
                                                         <>

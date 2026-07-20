@@ -6,6 +6,17 @@ import { sha256, normalizePhoneE164 } from './shared'
 export async function sendToGoogle(params: GoogleParams): Promise<ForwardingResult> {
     const { session, order, measurementId, apiSecret } = params
 
+    // GA4 Measurement Protocol requires a real client_id tied to an actual
+    // browser session (the _ga cookie GA4 itself set). Falling back to
+    // HaloTrack's own internal session id used to send GA4 a "conversion" for
+    // a client_id it has no history for — GA4 accepts that (204) but doesn't
+    // reliably count it as a real Key Event. Skip instead of sending known-bad
+    // data. No payload is set, so this isn't queued for retry either — a
+    // missing ga_client_id isn't a transient failure that a retry would fix.
+    if (!session.ga_client_id) {
+        return { success: false }
+    }
+
     let payload: Record<string, any> | undefined
 
     try {
@@ -14,7 +25,7 @@ export async function sendToGoogle(params: GoogleParams): Promise<ForwardingResu
         const hashedPhone = order.phone ? await sha256(normalizePhoneE164(order.phone, session.country)) : null
 
         payload = {
-            client_id: session.ga_client_id || session.session_id,
+            client_id: session.ga_client_id,
             events: [{
                 name: 'purchase',
                 params: {

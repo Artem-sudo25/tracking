@@ -155,6 +155,16 @@ describe('sendLeadToGoogle', () => {
         })
         expect('gclid' in result.payload!.events[0].params).toBe(false)
     })
+
+    it('skips sending (does not fall back to the internal session id) when ga_client_id is missing', async () => {
+        const result = await sendLeadToGoogle({
+            session: { ...session, ga_client_id: null },
+            lead, measurementId: 'G-TEST', apiSecret: 'SECRET',
+        })
+        expect(result.success).toBe(false)
+        expect(result.payload).toBeUndefined()
+        expect(mockFetch).not.toHaveBeenCalled()
+    })
 })
 
 describe('sendToGoogle (purchase)', () => {
@@ -180,5 +190,15 @@ describe('sendToGoogle (purchase)', () => {
         expect(params.gclid).toBe('Cj0KCQtest')
         expect(result.payload!.user_data.sha256_phone_number).toBe(sha('+420777123456'))
         expect(params.items).toEqual([{ item_id: 'p1', item_name: 'Product', price: 1500, quantity: 1 }])
+    })
+
+    it('skips sending (does not fall back to the internal session id) when ga_client_id is missing', async () => {
+        const result = await sendToGoogle({
+            session: { ...session, ga_client_id: null },
+            order, measurementId: 'G-TEST', apiSecret: 'SECRET',
+        })
+        expect(result.success).toBe(false)
+        expect(result.payload).toBeUndefined()
+        expect(mockFetch).not.toHaveBeenCalled()
     })
 })

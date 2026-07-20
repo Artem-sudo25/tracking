@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { formatDistanceToNow } from 'date-fns'
+import { format, formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Filter, Search } from 'lucide-react'
@@ -259,7 +259,10 @@ export function LeadsManager({ initialLeads, metrics }: LeadsManagerProps) {
                                         return (
                                             <TableRow key={lead.id}>
                                                 <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                                                    {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
+                                                    <div title={new Date(lead.created_at).toString()}>
+                                                        {format(new Date(lead.created_at), 'd MMM yyyy, HH:mm')}
+                                                    </div>
+                                                    <div>{formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}</div>
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="font-medium">{lead.name || 'Unknown'}</div>
