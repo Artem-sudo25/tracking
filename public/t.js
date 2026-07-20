@@ -13,6 +13,29 @@
         return match ? match[2] : null;
     }
 
+    function getGaClientId() {
+        var ga = getCookie('_ga');
+        if (!ga) return null;
+        // _ga cookie format: GA1.1.XXXXXXXXXX.XXXXXXXXXX — extract the last two parts
+        var parts = ga.split('.');
+        return parts.length >= 4 ? parts.slice(2).join('.') : ga;
+    }
+
+    function getGaSessionId() {
+        // _ga_<CONTAINER> cookie holds GA4's own session id. Needed for
+        // Measurement Protocol session stitching — without it server-side
+        // conversions report as "Unassigned" in GA4.
+        //   GS1.1.1719930000.5.1.1719930100.0.0.0   → 3rd segment
+        //   GS2.1.s1719930000$o5$g1$t1719930100$j0  → digits after "s"
+        var m = document.cookie.match(/(?:^|;\s*)_ga_[^=]+=([^;]+)/);
+        if (!m) return null;
+        var v = m[1];
+        var s2 = v.match(/^GS\d+\.\d+\.s(\d+)/);
+        if (s2) return s2[1];
+        var parts = v.split('.');
+        return (parts.length >= 3 && /^\d+$/.test(parts[2])) ? parts[2] : null;
+    }
+
     function post(endpoint, body) {
         return fetch(endpoint, {
             method: 'POST',
@@ -85,29 +108,6 @@
         referrer: document.referrer || null,
         landing: window.location.pathname + window.location.search,
         page_title: document.title,
-        fbc: getCookie('_fbc'),
-        fbp: getCookie('_fbp'),
-        ga_client_id: (function() {
-            var ga = getCookie('_ga');
-            if (!ga) return null;
-            // _ga cookie format: GA1.1.XXXXXXXXXX.XXXXXXXXXX — extract the last two parts
-            var parts = ga.split('.');
-            return parts.length >= 4 ? parts.slice(2).join('.') : ga;
-        })(),
-        ga_session_id: (function() {
-            // _ga_<CONTAINER> cookie holds GA4's own session id. Needed for
-            // Measurement Protocol session stitching — without it server-side
-            // conversions report as "Unassigned" in GA4.
-            //   GS1.1.1719930000.5.1.1719930100.0.0.0   → 3rd segment
-            //   GS2.1.s1719930000$o5$g1$t1719930100$j0  → digits after "s"
-            var m = document.cookie.match(/(?:^|;\s*)_ga_[^=]+=([^;]+)/);
-            if (!m) return null;
-            var v = m[1];
-            var s2 = v.match(/^GS\d+\.\d+\.s(\d+)/);
-            if (s2) return s2[1];
-            var parts = v.split('.');
-            return (parts.length >= 3 && /^\d+$/.test(parts[2])) ? parts[2] : null;
-        })(),
         navigation_type: (typeof PerformanceNavigationTiming !== 'undefined' &&
             performance.getEntriesByType('navigation')[0])
             ? performance.getEntriesByType('navigation')[0].type
@@ -137,6 +137,18 @@
     // queued identify/track calls (the cookie session may still be valid).
     function postTouch(attempt) {
         data.consent = getConsent();
+        // Read GA4/Meta cookies here, at actual send time, not back when `data`
+        // was first built — by now the deferred-trigger logic below (consent
+        // resolution, or the window-load fallback) has already given GTM/GA4/
+        // Meta Pixel time to load and set these cookies. Reading them into the
+        // top-level `data` object at parse time was racing tag managers that
+        // hadn't fired yet, which silently dropped ga_client_id/ga_session_id
+        // (and fbc/fbp) on most first-time, ad-click visits — exactly the
+        // sessions this data is most needed for.
+        data.ga_client_id = getGaClientId();
+        data.ga_session_id = getGaSessionId();
+        data.fbc = getCookie('_fbc');
+        data.fbp = getCookie('_fbp');
 
         post(ENDPOINT, data)
             .then(function (r) { return r.json(); })
