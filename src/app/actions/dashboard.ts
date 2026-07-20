@@ -614,6 +614,72 @@ export async function pushLeadToGoogleAds(leadId: string, value?: number): Promi
     }
 }
 
+type CancelPushResult = { success: true } | { success: false; error: string }
+
+// Undo a manual push. Only prevents the lead from being included in any
+// FUTURE scheduled CSV pull (clears manual_google_push_at/value/updated_at) —
+// it cannot retroactively un-count a conversion Google Ads already ingested
+// on a past pull. That's a real limitation, not an oversight: there's no way
+// for HaloTrack to know whether Google already pulled a given row, and
+// un-counting an already-reported conversion requires a Google Ads
+// "conversion adjustment" upload, which this does not attempt.
+export async function cancelGoogleAdsPush(leadId: string): Promise<CancelPushResult> {
+    const supabase = await createClient()
+
+    const {
+        data: { user },
+        error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+        return { success: false, error: 'Not authenticated' }
+    }
+
+    const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('client_id')
+        .eq('user_id', user.id)
+        .single()
+
+    if (clientError || !client) {
+        return { success: false, error: 'Client not found' }
+    }
+
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_KEY
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+
+    if (!serviceRoleKey || !supabaseUrl) {
+        return { success: false, error: 'Missing Supabase server configuration' }
+    }
+
+    const adminClient = createSupabaseClient(supabaseUrl, serviceRoleKey)
+
+    const { data, error } = await adminClient
+        .from('leads')
+        .update({
+            manual_google_push_at: null,
+            manual_google_push_value: null,
+            manual_google_push_updated_at: null,
+        })
+        .eq('client_id', client.client_id)
+        .eq('id', leadId)
+        .select('id')
+        .maybeSingle()
+
+    if (error) {
+        console.error('Error cancelling Google Ads push:', error)
+        return { success: false, error: error.message }
+    }
+
+    if (!data) {
+        return { success: false, error: 'Lead not found or update not permitted' }
+    }
+
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/leads')
+    return { success: true }
+}
+
 export async function getPipelineMetrics(
     clientId: string,
     startDate?: string,

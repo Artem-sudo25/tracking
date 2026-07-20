@@ -13,12 +13,12 @@
 //    lead B's button state when both are mid-request at once.
 
 import { useState } from 'react'
-import { pushLeadToGoogleAds } from '@/app/actions/dashboard'
+import { pushLeadToGoogleAds, cancelGoogleAdsPush } from '@/app/actions/dashboard'
 
 export type PushFeedback = { tone: 'success' | 'error'; text: string }
 
 export interface ManualPushPatch {
-    manual_google_push_at: string
+    manual_google_push_at: string | null
     manual_google_push_value: number | null
 }
 
@@ -85,5 +85,45 @@ export function useManualGooglePush(onPushed: (leadId: string, patch: ManualPush
         })
     }
 
-    return { valueDrafts, editingIds, pushingIds, feedback, startEditing, setDraft, push }
+    // Undoes a push in HaloTrack (removes it from future CSV pulls). Cannot
+    // retroactively un-count a conversion Google Ads already ingested on a
+    // past pull — see the comment on cancelGoogleAdsPush.
+    const cancel = async (leadId: string) => {
+        setPushingIds((prev) => new Set(prev).add(leadId))
+
+        const result = await cancelGoogleAdsPush(leadId)
+
+        setPushingIds((prev) => {
+            const next = new Set(prev)
+            next.delete(leadId)
+            return next
+        })
+
+        if (!result.success) {
+            setFeedback((prev) => ({
+                ...prev,
+                [leadId]: { tone: 'error', text: result.error || 'Could not cancel this push.' },
+            }))
+            return
+        }
+
+        onPushed(leadId, { manual_google_push_at: null, manual_google_push_value: null })
+        setFeedback((prev) => {
+            const next = { ...prev }
+            delete next[leadId]
+            return next
+        })
+        setValueDrafts((prev) => {
+            const next = { ...prev }
+            delete next[leadId]
+            return next
+        })
+        setEditingIds((prev) => {
+            const next = new Set(prev)
+            next.delete(leadId)
+            return next
+        })
+    }
+
+    return { valueDrafts, editingIds, pushingIds, feedback, startEditing, setDraft, push, cancel }
 }

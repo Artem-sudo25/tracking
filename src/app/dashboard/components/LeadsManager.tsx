@@ -358,6 +358,15 @@ export function LeadsManager({ initialLeads, metrics }: LeadsManagerProps) {
                                                                         >
                                                                             Edit
                                                                         </Button>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="h-6 px-1 text-xs text-red-600 hover:text-red-700"
+                                                                            onClick={() => void manualPush.cancel(lead.id)}
+                                                                            disabled={isPushing}
+                                                                        >
+                                                                            Cancel push
+                                                                        </Button>
                                                                     </div>
                                                                 )}
 

@@ -498,6 +498,15 @@ export function RecentLeads({
                                                                     >
                                                                         Edit value
                                                                     </Button>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-6 px-2 text-xs text-red-600 hover:text-red-700"
+                                                                        onClick={() => void manualPush.cancel(lead.id)}
+                                                                        disabled={isPushing}
+                                                                    >
+                                                                        Cancel push
+                                                                    </Button>
                                                                 </div>
                                                             )}
 
